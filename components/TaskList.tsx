@@ -6,6 +6,7 @@ import { collection, onSnapshot, addDoc, updateDoc, doc } from "firebase/firesto
 import { db } from "@/lib/firebase";
 import { useStore } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
+import { updatePresence } from "@/lib/firestore";
 import { Check, Plus } from "lucide-react";
 
 export default function TaskList() {
@@ -57,6 +58,17 @@ export default function TaskList() {
     }
   };
 
+  const setActiveTask = async (id: string) => {
+    setTimer({ activeTaskId: id });
+    if (!uid) return;
+    const state = useStore.getState().timer;
+    try {
+      await updatePresence(uid, state);
+    } catch {
+      pushOffline({ type: "presence", payload: state });
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row gap-2">
@@ -97,10 +109,7 @@ export default function TaskList() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => {
-                  // 设为当前计时任务
-                  useStore.getState().setTimer({ activeTaskId: t.id });
-                }}
+                onClick={() => { void setActiveTask(t.id); }}
                 className="text-sm underline"
               >
                 设为当前
