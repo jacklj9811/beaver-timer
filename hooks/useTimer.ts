@@ -76,6 +76,13 @@ export function useTimer(opts: Opts = {}) {
           // 自动切换到 break/focus
           const nextMode = timer.mode === "focus" ? "break" : "focus";
           resetTimer(nextMode);
+
+          if (uid) {
+            const nextState = useStore.getState().timer;
+            updatePresence(uid, nextState).catch(() => {
+              pushOffline({ type: "presence", payload: nextState });
+            });
+          }
         }
       }
       rafRef.current = requestAnimationFrame(loop);
