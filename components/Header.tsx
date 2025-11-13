@@ -8,7 +8,7 @@ export default function Header() {
       <div className="container-page flex items-center justify-between py-3">
         <Link href="/" className="font-semibold">🐾 海狸时钟</Link>
         <nav className="flex items-center gap-4">
-          <Link href="/(main)/stats" className="opacity-80 hover:opacity-100">统计</Link>
+          <Link href="/stats" className="opacity-80 hover:opacity-100">统计</Link>
           <ThemeToggle />
         </nav>
       </div>
