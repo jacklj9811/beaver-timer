@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "@/store/useStore";
 import { useTimer } from "@/hooks/useTimer";
 import { auth } from "@/lib/firebase";
@@ -19,7 +19,7 @@ export default function Timer() {
   const resetTimer = useStore(s => s.resetTimer);
 
   // 当前登录用户
-  const [uid, setUid] = React.useState<string | null>(null);
+  const [uid, setUid] = useState<string | null>(null);
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUid(u?.uid ?? null));
     return () => unsub();
