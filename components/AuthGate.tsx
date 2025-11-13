@@ -23,7 +23,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         <div className="text-center space-y-4">
           <h1 className="text-2xl font-semibold">海狸时钟 Beaver Timer</h1>
           <p>请先登录以开始专注。</p>
-          <Link className="inline-block px-4 py-2 rounded bg-slate-900 text-white dark:bg-white dark:text-slate-900" href="/(auth)/login">去登录</Link>
+          <Link className="inline-block px-4 py-2 rounded bg-slate-900 text-white dark:bg-white dark:text-slate-900" href="/login">去登录</Link>
         </div>
       </div>
     );
