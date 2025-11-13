@@ -106,11 +106,11 @@ export default function TaskList() {
                 设为当前
               </button>
               <button
-                onClick={() => toggleDone(t.id, t.done)}
+                onClick={() => toggleDone(t.id, !!t.done)}
                 className={`w-8 h-8 rounded border grid place-items-center ${t.done ? "bg-emerald-500/20 border-emerald-500" : "border-slate-300 dark:border-slate-700"}`}
                 title="完成/未完成"
               >
-                {t.done ? <Check className="w-4 h-4"/> : null}
+                {t.done ? <Check className="w-4 h-4" /> : null}
               </button>
             </div>
           </li>
