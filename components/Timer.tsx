@@ -11,12 +11,17 @@ const fmt = (s: number) => {
   const m = Math.floor(s / 60).toString().padStart(2, "0");
   const ss = Math.floor(s % 60).toString().padStart(2, "0");
   return `${m}:${ss}`;
-}
+};
 
 export default function Timer() {
-  const timer = useStore(s => s.timer);
-  const setTimer = useStore(s => s.setTimer);
-  const resetTimer = useStore(s => s.resetTimer);
+  // 状态
+  const timer = useStore((s) => s.timer);
+  const setTimer = useStore((s) => s.setTimer);
+  const resetTimer = useStore((s) => s.resetTimer);
+
+  // 获取任务，用于显示任务标题
+  const tasks = useStore((s) => s.tasks ?? []);
+  const activeTask = tasks.find((t) => t.id === timer.activeTaskId);
 
   // 当前登录用户
   const [uid, setUid] = useState<string | null>(null);
@@ -25,26 +30,30 @@ export default function Timer() {
     return () => unsub();
   }, []);
 
-  // 计时逻辑 + presence 写入
+  // 启动计时逻辑
   useTimer({
     uid,
-    onTick: () => {}
+    onTick: () => {},
   });
 
-  // 监听 presence，实现多设备实时同步（避免自激：只在远端更新且不同步状态时应用）
+  // 多设备同步 presence
   useEffect(() => {
     if (!uid) return;
     const unsub = listenPresence(uid, (remote) => {
-      // 简单冲突处理：如果本地非运行而远端在运行，拉取；反之忽略
       if (remote && typeof remote.secondsLeft === "number") {
         const local = useStore.getState().timer;
-        const desync = Math.abs((remote.secondsLeft ?? 0) - local.secondsLeft) > 2 || remote.isRunning !== local.isRunning || remote.mode !== local.mode || remote.activeTaskId !== local.activeTaskId;
+        const desync =
+          Math.abs((remote.secondsLeft ?? 0) - local.secondsLeft) > 2 ||
+          remote.isRunning !== local.isRunning ||
+          remote.mode !== local.mode ||
+          remote.activeTaskId !== local.activeTaskId;
+
         if (desync && !local.isRunning) {
           setTimer({
             secondsLeft: remote.secondsLeft ?? local.secondsLeft,
             isRunning: !!remote.isRunning,
             mode: (remote.mode as any) ?? local.mode,
-            activeTaskId: remote.activeTaskId ?? null
+            activeTaskId: remote.activeTaskId ?? null,
           });
         }
       }
@@ -52,47 +61,88 @@ export default function Timer() {
     return () => unsub();
   }, [uid, setTimer]);
 
+  // 控制按钮
   const start = async () => {
     setTimer({ isRunning: true });
     if (uid) {
-      try { await updatePresence(uid, { ...timer, isRunning: true }); }
-      catch { pushOffline({ type: "presence", payload: { ...timer, isRunning: true } }); }
+      try {
+        await updatePresence(uid, { ...timer, isRunning: true });
+      } catch {
+        pushOffline({
+          type: "presence",
+          payload: { ...timer, isRunning: true },
+        });
+      }
     }
   };
+
   const pause = async () => {
     setTimer({ isRunning: false });
     if (uid) {
-      try { await updatePresence(uid, { ...timer, isRunning: false }); }
-      catch { pushOffline({ type: "presence", payload: { ...timer, isRunning: false } }); }
+      try {
+        await updatePresence(uid, { ...timer, isRunning: false });
+      } catch {
+        pushOffline({
+          type: "presence",
+          payload: { ...timer, isRunning: false },
+        });
+      }
     }
   };
+
   const reset = async () => {
-    resetTimer();
+    resetTimer(); // 重置为当前模式的默认值
     if (uid) {
       try {
         const t = useStore.getState().timer;
         await updatePresence(uid, t);
       } catch {
-        pushOffline({ type: "presence", payload: useStore.getState().timer });
+        pushOffline({
+          type: "presence",
+          payload: useStore.getState().timer,
+        });
       }
     }
   };
 
   return (
     <div className="rounded-2xl border p-6 flex flex-col items-center gap-4">
-      <div className="text-sm opacity-70">模式：{timer.mode === "focus" ? "专注" : "休息"}</div>
-      <div className="text-6xl tabular-nums font-semibold">{fmt(timer.secondsLeft)}</div>
+      {/* 模式显示 */}
+      <div className="text-sm opacity-70">
+        模式：{timer.mode === "focus" ? "专注" : "休息"}
+      </div>
+
+      {/* 时间显示 */}
+      <div className="text-6xl tabular-nums font-semibold">
+        {fmt(timer.secondsLeft)}
+      </div>
+
+      {/* 控制按钮 */}
       <div className="flex items-center gap-2">
         {!timer.isRunning ? (
-          <button onClick={start} className="px-4 py-2 rounded bg-emerald-600 text-white">开始</button>
+          <button
+            onClick={start}
+            className="px-4 py-2 rounded bg-emerald-600 text-white"
+          >
+            开始
+          </button>
         ) : (
-          <button onClick={pause} className="px-4 py-2 rounded bg-amber-600 text-white">暂停</button>
+          <button
+            onClick={pause}
+            className="px-4 py-2 rounded bg-amber-600 text-white"
+          >
+            暂停
+          </button>
         )}
-        <button onClick={reset} className="px-4 py-2 rounded border">重置</button>
+
+        <button onClick={reset} className="px-4 py-2 rounded border">
+          重置
+        </button>
+
         <button
           onClick={() => {
             const next = timer.mode === "focus" ? "break" : "focus";
-            useStore.getState().resetTimer(next);
+            resetTimer(next); // 使用新版 resetTimer(带模式)
           }}
           className="px-4 py-2 rounded border"
         >
@@ -100,6 +150,7 @@ export default function Timer() {
         </button>
       </div>
 
+      {/* 调整默认时间 */}
       <div className="flex items-center gap-2 text-sm">
         <label className="flex items-center gap-1">
           专注分钟
@@ -108,9 +159,14 @@ export default function Timer() {
             className="w-16 rounded border px-2 py-1 bg-transparent"
             min={1}
             value={timer.defaultFocusMin}
-            onChange={(e) => useStore.getState().setTimer({ defaultFocusMin: Math.max(1, Number(e.target.value)) })}
+            onChange={(e) =>
+              useStore
+                .getState()
+                .setTimer({ defaultFocusMin: Math.max(1, Number(e.target.value)) })
+            }
           />
         </label>
+
         <label className="flex items-center gap-1">
           休息分钟
           <input
@@ -118,13 +174,18 @@ export default function Timer() {
             className="w-16 rounded border px-2 py-1 bg-transparent"
             min={1}
             value={timer.defaultBreakMin}
-            onChange={(e) => useStore.getState().setTimer({ defaultBreakMin: Math.max(1, Number(e.target.value)) })}
+            onChange={(e) =>
+              useStore
+                .getState()
+                .setTimer({ defaultBreakMin: Math.max(1, Number(e.target.value)) })
+            }
           />
         </label>
       </div>
 
+      {/* 显示当前任务 */}
       <div className="text-xs opacity-70">
-        当前任务：{timer.activeTaskId ? timer.activeTaskId : "未选择"}
+        当前任务：{activeTask ? activeTask.name : "未选择"}
       </div>
     </div>
   );
