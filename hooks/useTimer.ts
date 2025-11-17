@@ -65,14 +65,6 @@ export function useTimer(opts: Opts = {}) {
             pushOffline({ type: "session", payload });
           }
 
-          // 震动 / 通知
-          try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch {}
-          if (typeof window !== "undefined" && "Notification" in window) {
-            if (Notification.permission === "granted") {
-              new Notification("🔔 海狸时钟", { body: "本次计时完成！" });
-            }
-          }
-
           // 自动切换到 break/focus
           const nextMode = timer.mode === "focus" ? "break" : "focus";
           resetTimer(nextMode);
@@ -82,6 +74,17 @@ export function useTimer(opts: Opts = {}) {
             updatePresence(uid, nextState).catch(() => {
               pushOffline({ type: "presence", payload: nextState });
             });
+          }
+
+          // 震动 / 通知
+          try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch {}
+          if (typeof window !== "undefined" && "Notification" in window) {
+            if (Notification.permission === "granted") {
+              new Notification("🔔 海狸时钟", { body: timer.mode === "focus"
+                ? "专注完成！休息一下～"
+                : "休息结束！继续专注吧！" 
+              });
+            }
           }
         }
       }
