@@ -2,12 +2,12 @@
   "name": "beaver-timer",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev --turbo",
-    "build": "next build",
-    "start": "next start",
-    "postinstall": "patch -p0 < /dev/null || true"
-  },
+    "scripts": {
+      "dev": "next dev --turbo",
+      "dev:inspect": "node --inspect-brk node_modules/next/dist/bin/next dev --turbo",
+      "build": "next build",
+      "start": "next start"
+    },
   "dependencies": {
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
