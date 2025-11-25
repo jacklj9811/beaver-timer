@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",
-    "start": "next start",
-    "postinstall": "patch -p0 < /dev/null || true"
+    "start": "next start"
   },
   "dependencies": {
     "autoprefixer": "^10.4.20",
