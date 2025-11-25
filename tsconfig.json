@@ -7,6 +7,7 @@
       "DOM.Iterable"
     ],
     "jsx": "preserve",
+    "sourceMap": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
