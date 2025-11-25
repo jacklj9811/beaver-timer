@@ -1,0 +1,44 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // ⭐ 一键全栈调试（推荐用这个）
+      "name": "Next.js: Debug dev server",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+
+      // 避免跳进一堆 Node 内部代码
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+
+      // ⭐ 自动在浏览器里打开，并附加前端调试
+      "serverReadyAction": {
+        "action": "debugWithChrome",
+        "pattern": "started server on .+, url: (https?://.+)",
+        "uriFormat": "%s"
+      }
+    },
+
+    {
+      // 备用：只调试 Next.js 的 Node 端（不自动开浏览器）
+      "name": "Next.js: Node only",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--inspect",
+        "${workspaceFolder}/node_modules/next/dist/bin/next",
+        "dev"
+      ],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    }
+  ]
+}
