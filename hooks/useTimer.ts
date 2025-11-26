@@ -69,6 +69,14 @@ export function useTimer(opts: Opts = {}) {
           const nextMode = timer.mode === "focus" ? "break" : "focus";
           resetTimer(nextMode);
 
+          // 停止当前帧循环，避免在 isRunning 状态更新为 false 之前继续沿用旧的 timer 值
+          if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+          lastTsRef.current = null;
+          return;
+
           if (uid) {
             const nextState = useStore.getState().timer;
             updatePresence(uid, nextState).catch(() => {
