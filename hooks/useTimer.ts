@@ -11,13 +11,15 @@ type Opts = {
 
 export function useTimer(opts: Opts = {}) {
   const { uid, onTick } = opts;
+
+  // 这里只订阅 timer，用来判断要不要启动 / 停止循环
   const timer = useStore(s => s.timer);
   const setTimer = useStore(s => s.setTimer);
   const resetTimer = useStore(s => s.resetTimer);
+
   const rafRef = useRef<number | null>(null);
   const lastTsRef = useRef<number | null>(null);
 
-  // tick（使用 requestAnimationFrame 平滑，内部按 1s 结算）
   useEffect(() => {
     if (!timer.isRunning) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -25,38 +27,55 @@ export function useTimer(opts: Opts = {}) {
       lastTsRef.current = null;
       return;
     }
+
+    let stopped = false;
+
     const loop = (ts: number) => {
+      if (stopped) return;
+
       if (!lastTsRef.current) lastTsRef.current = ts;
       const delta = ts - lastTsRef.current;
+
       if (delta >= 1000) {
         const dec = Math.floor(delta / 1000);
-        const left = Math.max(0, timer.secondsLeft - dec);
+
+        // ✅ 每次 tick 都拿最新的 timer 状态，而不是用闭包里的旧 timer
+        const current = useStore.getState().timer;
+        const left = Math.max(0, current.secondsLeft - dec);
+
+        // 更新本地剩余秒数
         setTimer({ secondsLeft: left });
         lastTsRef.current = ts;
         onTick?.(left);
 
-        // 每秒同步 presence（多设备实时一致）
+        // 每秒同步 presence
         if (uid) {
-          const state = {
+          const presenceState = {
             secondsLeft: left,
-            isRunning: true,
-            mode: timer.mode,
-            activeTaskId: timer.activeTaskId
+            isRunning: left > 0, // 归零时可先标成 false
+            mode: current.mode,
+            activeTaskId: current.activeTaskId ?? null,
           };
-          updatePresence(uid, state).catch(() => {
-            // 离线：压队列
-            pushOffline({ type: "presence", payload: state });
+          updatePresence(uid, presenceState).catch(() => {
+            pushOffline({ type: "presence", payload: presenceState });
           });
         }
 
-        // 完成一个番茄
+        // 🔔 完成一个番茄
         if (left === 0) {
+          // 再次拿最新状态（刚刚 setTimer 后的）
+          const finalTimer = useStore.getState().timer;
+
           const payload = {
-            date: new Date().toISOString().slice(0,10),
-            mode: timer.mode,
-            durationSec: (timer.mode === "focus" ? timer.defaultFocusMin : timer.defaultBreakMin) * 60,
-            taskId: timer.activeTaskId ?? null
+            date: new Date().toISOString().slice(0, 10),
+            mode: finalTimer.mode,
+            durationSec:
+              (finalTimer.mode === "focus"
+                ? finalTimer.defaultFocusMin
+                : finalTimer.defaultBreakMin) * 60,
+            taskId: finalTimer.activeTaskId ?? null,
           };
+
           if (uid) {
             writeSession(uid, payload).catch(() => {
               pushOffline({ type: "session", payload });
@@ -65,10 +84,12 @@ export function useTimer(opts: Opts = {}) {
             pushOffline({ type: "session", payload });
           }
 
-          // 自动切换到 break/focus
-          const nextMode = timer.mode === "focus" ? "break" : "focus";
+          // 自动切换模式 + 重置时间（resetTimer 会把 isRunning 设为 false）
+          const nextMode =
+            finalTimer.mode === "focus" ? "break" : "focus";
           resetTimer(nextMode);
 
+          // 切换模式之后，再同步一次 presence（确保远端拿到“下一轮”的状态）
           if (uid) {
             const nextState = useStore.getState().timer;
             updatePresence(uid, nextState).catch(() => {
@@ -77,32 +98,45 @@ export function useTimer(opts: Opts = {}) {
           }
 
           // 震动 / 通知
-          try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch {}
+          try {
+            if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+          } catch {}
           if (typeof window !== "undefined" && "Notification" in window) {
             if (Notification.permission === "granted") {
-              new Notification("🔔 海狸时钟", { body: timer.mode === "focus"
-                ? "专注完成！休息一下～"
-                : "休息结束！继续专注吧！" 
+              new Notification("🔔 海狸时钟", {
+                body:
+                  finalTimer.mode === "focus"
+                    ? "专注完成！休息一下～"
+                    : "休息结束！继续专注吧！",
               });
             }
           }
+
+          // ❗️结束当前循环，不再 requestAnimationFrame
+          stopped = true;
+          return;
         }
       }
+
       rafRef.current = requestAnimationFrame(loop);
     };
+
     rafRef.current = requestAnimationFrame(loop);
+
     return () => {
+      stopped = true;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
       lastTsRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timer.isRunning, timer.mode, timer.secondsLeft, timer.defaultFocusMin, timer.defaultBreakMin, timer.activeTaskId, uid]);
+  }, [timer.isRunning, uid, onTick, resetTimer, setTimer]);
 
-  // 请求通知权限（可选）
+  // 请求通知权限（可选保留）
   useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
     }
   }, []);
 
