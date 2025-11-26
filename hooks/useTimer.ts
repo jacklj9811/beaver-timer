@@ -94,6 +94,14 @@ export function useTimer(opts: Opts = {}) {
               });
             }
           }
+
+          // 停止当前帧循环，避免在 isRunning 状态更新为 false 之前继续沿用旧的 timer 值
+          if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+          lastTsRef.current = null;
+          return;
         }
       }
       rafRef.current = requestAnimationFrame(loop);
