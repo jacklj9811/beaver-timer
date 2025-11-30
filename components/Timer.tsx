@@ -22,6 +22,8 @@ export default function Timer() {
   // 获取任务，用于显示任务标题
   const tasks = useStore((s) => s.tasks ?? []);
   const activeTask = tasks.find((t) => t.id === timer.activeTaskId);
+  const hasTasks = tasks.length > 0;
+  const hasActiveTask = !!activeTask;
 
   // 当前登录用户
   const [uid, setUid] = useState<string | null>(null);
@@ -113,6 +115,35 @@ export default function Timer() {
     }
   };
 
+  const showStartBlockedHint = () => {
+    if (!hasTasks) {
+      window.alert(
+        [
+          "无任务可选",
+          "请先创建一个新任务，并在创建后将其设为当前任务。",
+          "（提示：你也可以将此作为当前教程步骤）",
+        ].join("\n")
+      );
+      return;
+    }
+
+    window.alert(
+      [
+        "需要先选择一个任务作为当前任务。",
+        "或者新建一个任务并设置为当前任务。",
+      ].join("\n")
+    );
+  };
+
+  const handleStartClick = () => {
+    if (!hasActiveTask) {
+      showStartBlockedHint();
+      return;
+    }
+
+    void start();
+  };
+
   return (
     <div className="rounded-2xl border p-6 flex flex-col items-center gap-4">
       {/* 模式显示 */}
@@ -128,12 +159,24 @@ export default function Timer() {
       {/* 控制按钮 */}
       <div className="flex items-center gap-2">
         {!timer.isRunning ? (
-          <button
-            onClick={start}
-            className="px-4 py-2 rounded bg-emerald-600 text-white"
-          >
-            开始
-          </button>
+          <div className="relative">
+            <button
+              onClick={handleStartClick}
+              disabled={!hasActiveTask}
+              className={`px-4 py-2 rounded bg-emerald-600 text-white transition ${
+                hasActiveTask ? "" : "opacity-50 cursor-not-allowed"
+              }`}
+            >
+              开始
+            </button>
+            {!hasActiveTask ? (
+              <div
+                role="presentation"
+                className="absolute inset-0 rounded"
+                onClick={showStartBlockedHint}
+              />
+            ) : null}
+          </div>
         ) : (
           <button
             onClick={pause}
