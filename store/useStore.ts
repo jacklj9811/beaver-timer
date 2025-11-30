@@ -1,12 +1,18 @@
 "use client";
 import { create } from "zustand";
 
-type Task = {
+export type Tag = {
   id: string;
   name: string;
-  tags: string[];
-  priority: "low"|"medium"|"high";
+};
+
+export type Task = {
+  id: string;
+  name: string;
+  tagIds: string[];
+  priority: "low" | "medium" | "high";
   done?: boolean;
+  archived?: boolean;
 };
 
 type TimerState = {
@@ -21,14 +27,20 @@ type TimerState = {
 
 type AppState = {
   tasks: Task[];
+  archivedTasks: Task[];
+  tags: Tag[];
   timer: TimerState;
   setTasks: (tasks: Task[]) => void;
+  setArchivedTasks: (tasks: Task[]) => void;
+  setTags: (tags: Tag[]) => void;
   setTimer: (t: Partial<TimerState>) => void;
-  resetTimer: (mode?: "focus"|"break") => void;
+  resetTimer: (mode?: "focus" | "break") => void;
 };
 
 export const useStore = create<AppState>((set) => ({
   tasks: [],
+  archivedTasks: [],
+  tags: [],
   timer: {
     secondsLeft: 25*60,
     isRunning: false,
@@ -39,7 +51,9 @@ export const useStore = create<AppState>((set) => ({
     activeTaskId: null
   },
   setTasks: (tasks) => set({ tasks }),
-  setTimer: (t) => set((s) => ({ timer: { ...s.timer, ...t }})),
+  setArchivedTasks: (tasks) => set({ archivedTasks: tasks }),
+  setTags: (tags) => set({ tags }),
+  setTimer: (t) => set((s) => ({ timer: { ...s.timer, ...t } })),
   resetTimer: (mode) => set((s) => {
     const m = mode ?? s.timer.mode;
     const minutes = m === "focus" ? s.timer.defaultFocusMin : s.timer.defaultBreakMin;
