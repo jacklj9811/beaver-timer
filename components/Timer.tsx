@@ -42,18 +42,26 @@ export default function Timer() {
     const unsub = listenPresence(uid, (remote) => {
       if (remote && typeof remote.secondsLeft === "number") {
         const local = useStore.getState().timer;
+        const remoteMode = (remote.mode as "focus" | "break") ?? local.mode;
+        const roundTotalSec =
+          typeof remote.roundTotalSec === "number"
+            ? remote.roundTotalSec
+            : local.roundTotalSec ??
+              ((remoteMode === "focus" ? local.defaultFocusMin : local.defaultBreakMin) * 60);
         const desync =
           Math.abs((remote.secondsLeft ?? 0) - local.secondsLeft) > 2 ||
           remote.isRunning !== local.isRunning ||
-          remote.mode !== local.mode ||
-          remote.activeTaskId !== local.activeTaskId;
+          remoteMode !== local.mode ||
+          remote.activeTaskId !== local.activeTaskId ||
+          roundTotalSec !== local.roundTotalSec;
 
         if (desync && !local.isRunning) {
           setTimer({
             secondsLeft: remote.secondsLeft ?? local.secondsLeft,
             isRunning: !!remote.isRunning,
-            mode: (remote.mode as any) ?? local.mode,
+            mode: remoteMode,
             activeTaskId: remote.activeTaskId ?? null,
+            roundTotalSec,
           });
         }
       }

@@ -15,6 +15,7 @@ type TimerState = {
   defaultFocusMin: number;    // 默认 25
   defaultBreakMin: number;    // 默认 5
   mode: "focus"|"break";
+  roundTotalSec: number;      // 本轮开始时的总秒数，用于统计
   activeTaskId?: string | null;
 };
 
@@ -34,6 +35,7 @@ export const useStore = create<AppState>((set) => ({
     defaultFocusMin: 25,
     defaultBreakMin: 5,
     mode: "focus",
+    roundTotalSec: 25*60,
     activeTaskId: null
   },
   setTasks: (tasks) => set({ tasks }),
@@ -41,6 +43,7 @@ export const useStore = create<AppState>((set) => ({
   resetTimer: (mode) => set((s) => {
     const m = mode ?? s.timer.mode;
     const minutes = m === "focus" ? s.timer.defaultFocusMin : s.timer.defaultBreakMin;
-    return { timer: { ...s.timer, mode: m, secondsLeft: minutes*60, isRunning: false } };
+    const totalSec = minutes * 60;
+    return { timer: { ...s.timer, mode: m, secondsLeft: totalSec, roundTotalSec: totalSec, isRunning: false } };
   })
 }));
