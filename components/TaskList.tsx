@@ -8,6 +8,11 @@ import {
   addDoc,
   updateDoc,
   doc,
+  getDocs,
+  query,
+  where,
+  deleteDoc,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
@@ -36,6 +41,8 @@ export default function TaskList() {
   const [editingName, setEditingName] = useState("");
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({});
   const [showTagManager, setShowTagManager] = useState(false);
+  const [tagsReady, setTagsReady] = useState(false);
+  const [tasksReady, setTasksReady] = useState(false);
 
   useEffect(() => {
     let unsubTasks: (() => void) | null = null;
@@ -46,6 +53,8 @@ export default function TaskList() {
       setTasks([]);
       setArchivedTasks([]);
       setTags([]);
+      setTagsReady(false);
+      setTasksReady(false);
 
       unsubTasks?.();
       unsubTags?.();
@@ -68,11 +77,13 @@ export default function TaskList() {
           } satisfies Task;
         });
         setRawTasks(list);
+        setTasksReady(true);
       });
 
       unsubTags = onSnapshot(tagsCol, (snap) => {
         const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Tag[];
         setTags(list);
+        setTagsReady(true);
       });
     });
 
@@ -84,13 +95,14 @@ export default function TaskList() {
   }, [setArchivedTasks, setTags, setTasks]);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !tagsReady || !tasksReady) return;
 
     const normalizeTasks = async () => {
       const tagById = new Map(tags.map((t) => [t.id, t]));
       const tagByName = new Map(tags.map((t) => [t.name.toLowerCase(), t]));
       const active: Task[] = [];
       const archived: Task[] = [];
+      const looksLikeId = (text: string) => /^[A-Za-z0-9]{16,}$/.test(text);
 
       for (const task of rawTasks) {
         const normalizedTagIds: string[] = [];
@@ -109,6 +121,11 @@ export default function TaskList() {
           const byName = tagByName.get(value.toLowerCase());
           if (byName) {
             normalizedTagIds.push(byName.id);
+            continue;
+          }
+
+          if (looksLikeId(value)) {
+            normalizedTagIds.push(value);
             continue;
           }
 
@@ -166,7 +183,7 @@ export default function TaskList() {
 
     const historical = archivedTasks.find((t) => t.name === name);
     if (historical) {
-      const reuse = window.confirm(`检测到你曾创建过任务「${name}」，是否继承历史记录？`);
+      const reuse = window.confirm(`检测到你曾创建过任务「${name}」，是否继承历史统计数据？`);
       if (reuse) {
         await updateDoc(doc(db, "users", uid, "tasks", historical.id), {
           archived: false,
@@ -174,6 +191,35 @@ export default function TaskList() {
           updatedAt: new Date(),
         });
         setInput("");
+        return;
+      }
+
+      const override = window.confirm("覆盖将会删除该任务之前的所有历史记录，是否继续？");
+      if (!override) return;
+
+      try {
+        const sessionsQuery = query(
+          collection(db, "users", uid, "sessions"),
+          where("taskId", "==", historical.id)
+        );
+        const snap = await getDocs(sessionsQuery);
+        await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+
+        const payload = {
+          name,
+          tagIds: [],
+          priority: "medium" as const,
+          done: false,
+          archived: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await setDoc(doc(db, "users", uid, "tasks", historical.id), payload);
+        setInput("");
+        return;
+      } catch (e) {
+        console.error(e);
+        setError("覆盖任务失败，请稍后重试");
         return;
       }
     }
@@ -243,7 +289,7 @@ export default function TaskList() {
     const name = value.trim();
     if (!name) return;
 
-    let tag = tags.find((t) => t.id === name || t.name.toLowerCase() === name.toLowerCase());
+    let tag = tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
     if (!tag) {
       const ref = await addDoc(TAG_COLLECTION(uid), { name, createdAt: new Date() });
       tag = { id: ref.id, name };
@@ -321,7 +367,7 @@ export default function TaskList() {
                     key={tagId}
                     className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1"
                   >
-                    {taskNameMap.get(tagId) ?? tagId}
+                    {taskNameMap.get(tagId) ?? "未知标签"}
                     <button onClick={() => void removeTagFromTask(t, tagId)} aria-label="移除标签">
                       <X className="w-3 h-3" />
                     </button>
