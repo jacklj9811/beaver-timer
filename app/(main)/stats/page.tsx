@@ -1,10 +1,10 @@
 "use client";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { format, startOfWeek, addDays, isSameDay } from "date-fns";
+import { sessionsCollection, tasksCollection } from "@/lib/firestore";
 
 type Session = { id: string; date: string; mode: "focus" | "break"; durationSec: number; taskId?: string | null };
 type Task = { id: string; name?: string | null };
@@ -27,17 +27,18 @@ export default function StatsPage() {
         return;
       }
 
-      const q = query(
-        collection(db, "users", u.uid, "sessions"),
+      const sessionsQuery = query(
+        sessionsCollection,
+        where("user_uid", "==", u.uid),
         where("date", ">=", "1970-01-01"),
         orderBy("date", "asc")
       );
-      unsubSessions = onSnapshot(q, (snap) => {
+      unsubSessions = onSnapshot(sessionsQuery, (snap) => {
         setSessions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
       });
 
-      const tasksCol = collection(db, "users", u.uid, "tasks");
-      unsubTasks = onSnapshot(tasksCol, (snap) => {
+      const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
+      unsubTasks = onSnapshot(tasksQuery, (snap) => {
         setTasks(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
       });
     });

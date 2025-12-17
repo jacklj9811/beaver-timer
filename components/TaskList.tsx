@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useMemo, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -17,11 +17,10 @@ import {
 import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
-import { updatePresence } from "@/lib/firestore";
+import { tasksCollection, updatePresence } from "@/lib/firestore";
 import { Check, Plus, Tag as TagIcon, X, Pencil, Trash2 } from "lucide-react";
 import TagManager from "./TagManager";
 
-const TASK_COLLECTION = (uid: string) => collection(db, "users", uid, "tasks");
 const TAG_COLLECTION = (uid: string) => collection(db, "users", uid, "tags");
 
 export default function TaskList() {
@@ -34,6 +33,7 @@ export default function TaskList() {
   const setTimer = useStore((s) => s.setTimer);
 
   const [uid, setUid] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [rawTasks, setRawTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +50,7 @@ export default function TaskList() {
 
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setUid(u?.uid ?? null);
+      setUserEmail(u?.email ?? null);
       setTasks([]);
       setArchivedTasks([]);
       setTags([]);
@@ -58,13 +59,12 @@ export default function TaskList() {
 
       unsubTasks?.();
       unsubTags?.();
-
       if (!u) return;
 
-      const tasksCol = TASK_COLLECTION(u.uid);
+      const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
       const tagsCol = TAG_COLLECTION(u.uid);
 
-      unsubTasks = onSnapshot(tasksCol, (snap) => {
+      unsubTasks = onSnapshot(tasksQuery, (snap) => {
         const list = snap.docs.map((d) => {
           const data = d.data() as any;
           return {
@@ -146,7 +146,7 @@ export default function TaskList() {
         else active.push(normalizedTask);
 
         if (needsUpdate) {
-          await updateDoc(doc(db, "users", uid, "tasks", task.id), {
+          await updateDoc(doc(db, "tasks", task.id), {
             tagIds: dedupedTagIds,
           });
         }
@@ -183,9 +183,9 @@ export default function TaskList() {
 
     const historical = archivedTasks.find((t) => t.name === name);
     if (historical) {
-      const reuse = window.confirm(`检测到你曾创建过任务「${name}」，是否继承历史统计数据？`);
+      const reuse = window.confirm(`检测到你曾创建过任务“${name}”，是否继承历史统计数据？`);
       if (reuse) {
-        await updateDoc(doc(db, "users", uid, "tasks", historical.id), {
+        await updateDoc(doc(db, "tasks", historical.id), {
           archived: false,
           done: false,
           updatedAt: new Date(),
@@ -194,12 +194,13 @@ export default function TaskList() {
         return;
       }
 
-      const override = window.confirm("覆盖将会删除该任务之前的所有历史记录，是否继续？");
+      const override = window.confirm("覆盖将删除该任务之前的所有历史记录，是否继续？");
       if (!override) return;
 
       try {
         const sessionsQuery = query(
-          collection(db, "users", uid, "sessions"),
+          collection(db, "sessions"),
+          where("user_uid", "==", uid),
           where("taskId", "==", historical.id)
         );
         const snap = await getDocs(sessionsQuery);
@@ -214,7 +215,11 @@ export default function TaskList() {
           createdAt: new Date(),
           updatedAt: new Date(),
         };
-        await setDoc(doc(db, "users", uid, "tasks", historical.id), payload);
+        await setDoc(doc(db, "tasks", historical.id), {
+          ...payload,
+          user_uid: uid,
+          user_email: userEmail ?? null,
+        });
         setInput("");
         return;
       } catch (e) {
@@ -234,17 +239,24 @@ export default function TaskList() {
     };
 
     try {
-      await addDoc(TASK_COLLECTION(uid), payload);
+      await addDoc(tasksCollection, {
+        ...payload,
+        user_uid: uid,
+        user_email: userEmail ?? null,
+      });
       setInput("");
     } catch {
-      pushOffline({ type: "task", payload: { action: "add", ...payload } });
+      pushOffline({
+        type: "task",
+        payload: { action: "add", ...payload, user_uid: uid, user_email: userEmail ?? null },
+      });
     }
   };
 
   const toggleDone = async (id: string, done: boolean) => {
     if (!uid) return;
     try {
-      await updateDoc(doc(db, "users", uid, "tasks", id), { done: !done, updatedAt: new Date() });
+      await updateDoc(doc(db, "tasks", id), { done: !done, updatedAt: new Date() });
     } catch {
       pushOffline({ type: "task", payload: { action: "update", id, done: !done } });
     }
@@ -252,9 +264,9 @@ export default function TaskList() {
 
   const archiveTask = async (task: Task) => {
     if (!uid) return;
-    const confirmed = window.confirm(`确认删除任务「${task.name}」？此操作会保留历史统计`);
+    const confirmed = window.confirm(`确认删除任务“${task.name}”？此操作会保留历史统计`);
     if (!confirmed) return;
-    await updateDoc(doc(db, "users", uid, "tasks", task.id), {
+    await updateDoc(doc(db, "tasks", task.id), {
       archived: true,
       archivedAt: new Date(),
     });
@@ -273,7 +285,7 @@ export default function TaskList() {
       setError("当前列表已存在同名任务，无法创建");
       return;
     }
-    await updateDoc(doc(db, "users", uid, "tasks", task.id), { name, updatedAt: new Date() });
+    await updateDoc(doc(db, "tasks", task.id), { name, updatedAt: new Date() });
     setEditingId(null);
     setEditingName("");
   };
@@ -281,7 +293,7 @@ export default function TaskList() {
   const removeTagFromTask = async (task: Task, tagId: string) => {
     if (!uid) return;
     const next = (task.tagIds || []).filter((id) => id !== tagId);
-    await updateDoc(doc(db, "users", uid, "tasks", task.id), { tagIds: next, updatedAt: new Date() });
+    await updateDoc(doc(db, "tasks", task.id), { tagIds: next, updatedAt: new Date() });
   };
 
   const addTagToTask = async (task: Task, value: string) => {
@@ -296,7 +308,7 @@ export default function TaskList() {
     }
 
     const next = Array.from(new Set([...(task.tagIds || []), tag.id]));
-    await updateDoc(doc(db, "users", uid, "tasks", task.id), { tagIds: next, updatedAt: new Date() });
+    await updateDoc(doc(db, "tasks", task.id), { tagIds: next, updatedAt: new Date() });
     setTagInputs((prev) => ({ ...prev, [task.id]: "" }));
   };
 
@@ -311,7 +323,7 @@ export default function TaskList() {
       <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
         <input
           className="flex-1 rounded border px-3 py-2 bg-transparent"
-          placeholder="任务名"
+          placeholder="任务名称"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
@@ -440,7 +452,7 @@ export default function TaskList() {
           const affected = [...tasks, ...archivedTasks].filter((t) => t.tagIds?.includes(tagId));
           await Promise.all(
             affected.map((t) =>
-              updateDoc(doc(db, "users", uid, "tasks", t.id), {
+              updateDoc(doc(db, "tasks", t.id), {
                 tagIds: (t.tagIds || []).filter((id) => id !== tagId),
                 updatedAt: new Date(),
               })
