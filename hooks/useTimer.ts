@@ -6,12 +6,11 @@ import { pushOffline } from "@/utils/mergeOffline";
 
 type Opts = {
   uid?: string | null;
-  userEmail?: string | null;
   onTick?: (secs: number) => void;
 };
 
 export function useTimer(opts: Opts = {}) {
-  const { uid, userEmail, onTick } = opts;
+  const { uid, onTick } = opts;
 
   // 这里只订阅 timer，用来判断要不要启动 / 停止循环
   const timer = useStore((s) => s.timer);
@@ -81,17 +80,16 @@ export function useTimer(opts: Opts = {}) {
             taskId: finalTimer.activeTaskId ?? null,
           };
 
-          const offlinePayload = {
-            ...payload,
-            user_uid: uid ?? null,
-            user_email: userEmail ?? null,
-          };
+        const offlinePayload = {
+          ...payload,
+          user_uid: uid ?? null,
+        };
 
-          if (uid) {
-            writeSession(uid, payload, userEmail ?? null).catch(() => {
-              pushOffline({ type: "session", payload: offlinePayload });
-            });
-          } else {
+        if (uid) {
+          writeSession(uid, payload).catch(() => {
+            pushOffline({ type: "session", payload: offlinePayload });
+          });
+        } else {
             pushOffline({ type: "session", payload: offlinePayload });
           }
 

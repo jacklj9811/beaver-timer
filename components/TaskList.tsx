@@ -13,11 +13,12 @@ import {
   where,
   deleteDoc,
   setDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
-import { tasksCollection, updatePresence } from "@/lib/firestore";
+import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
 import { Check, Plus, Tag as TagIcon, X, Pencil, Trash2 } from "lucide-react";
 import TagManager from "./TagManager";
 
@@ -33,7 +34,6 @@ export default function TaskList() {
   const setTimer = useStore((s) => s.setTimer);
 
   const [uid, setUid] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [rawTasks, setRawTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +50,6 @@ export default function TaskList() {
 
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setUid(u?.uid ?? null);
-      setUserEmail(u?.email ?? null);
       setTasks([]);
       setArchivedTasks([]);
       setTags([]);
@@ -60,6 +59,12 @@ export default function TaskList() {
       unsubTasks?.();
       unsubTags?.();
       if (!u) return;
+
+      void setDoc(
+        userDoc(u.uid),
+        { user_uid: u.uid, email: u.email ?? null, updatedAt: serverTimestamp(), createdAt: serverTimestamp() },
+        { merge: true }
+      );
 
       const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
       const tagsCol = TAG_COLLECTION(u.uid);
@@ -218,7 +223,6 @@ export default function TaskList() {
         await setDoc(doc(db, "tasks", historical.id), {
           ...payload,
           user_uid: uid,
-          user_email: userEmail ?? null,
         });
         setInput("");
         return;
@@ -242,13 +246,12 @@ export default function TaskList() {
       await addDoc(tasksCollection, {
         ...payload,
         user_uid: uid,
-        user_email: userEmail ?? null,
       });
       setInput("");
     } catch {
       pushOffline({
         type: "task",
-        payload: { action: "add", ...payload, user_uid: uid, user_email: userEmail ?? null },
+        payload: { action: "add", ...payload, user_uid: uid },
       });
     }
   };
