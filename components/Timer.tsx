@@ -27,11 +27,9 @@ export default function Timer() {
 
   // 当前登录用户
   const [uid, setUid] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUid(u?.uid ?? null);
-      setUserEmail(u?.email ?? null);
     });
     return () => unsub();
   }, []);
@@ -39,7 +37,6 @@ export default function Timer() {
   // 启动计时逻辑
   useTimer({
     uid,
-    userEmail,
     onTick: () => {},
   });
 

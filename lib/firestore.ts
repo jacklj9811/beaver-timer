@@ -17,16 +17,10 @@ export const tasksCollection = collection(db, "tasks");
 export const sessionsCollection = collection(db, "sessions");
 export const presenceDoc = (uid: string) => doc(db, "users", uid, "presence", "timer");
 
-export async function upsertTask(
-  uid: string,
-  taskId: string | null,
-  data: any,
-  userEmail?: string | null
-) {
+export async function upsertTask(uid: string, taskId: string | null, data: any) {
   const payload = {
     ...data,
     user_uid: uid,
-    user_email: userEmail ?? null,
   };
 
   if (taskId) {
@@ -44,11 +38,10 @@ export async function upsertTask(
   }
 }
 
-export async function writeSession(uid: string, payload: any, userEmail?: string | null) {
+export async function writeSession(uid: string, payload: any) {
   await addDoc(sessionsCollection, {
     ...payload,
     user_uid: uid,
-    user_email: userEmail ?? null,
     ts: serverTimestamp(),
   });
 }
