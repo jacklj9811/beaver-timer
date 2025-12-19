@@ -446,8 +446,11 @@ export default function TaskList() {
       {error ? <div className="text-sm text-red-500">{error}</div> : null}
 
       <div className="space-y-4">
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">未完成任务</h3>
+        <details open className="space-y-2">
+          <summary className="text-sm font-semibold cursor-pointer select-none list-none flex items-center justify-between">
+            <span>未完成任务</span>
+            <span className="text-xs text-slate-500">共 {pendingTasks.length} 项</span>
+          </summary>
           {pendingTasks.length ? (
             <ul className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
               {pendingTasks.map((t) => renderTaskItem(t))}
@@ -455,9 +458,12 @@ export default function TaskList() {
           ) : (
             <div className="text-sm text-slate-500">暂无未完成任务</div>
           )}
-        </div>
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">已完成任务</h3>
+        </details>
+        <details className="space-y-2">
+          <summary className="text-sm font-semibold cursor-pointer select-none list-none flex items-center justify-between">
+            <span>已完成任务</span>
+            <span className="text-xs text-slate-500">共 {completedTasks.length} 项</span>
+          </summary>
           {completedTasks.length ? (
             <ul className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
               {completedTasks.map((t) => renderTaskItem(t))}
@@ -465,7 +471,7 @@ export default function TaskList() {
           ) : (
             <div className="text-sm text-slate-500">暂无已完成任务</div>
           )}
-        </div>
+        </details>
       </div>
 
       <TagManager
