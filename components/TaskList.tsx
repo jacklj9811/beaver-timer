@@ -19,7 +19,7 @@ import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
 import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
-import { Check, Plus, Tag as TagIcon, X, Pencil, Trash2 } from "lucide-react";
+import { Check, Plus, Tag as TagIcon, X, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import TagManager from "./TagManager";
 
 const TAG_COLLECTION = (uid: string) => collection(db, "users", uid, "tags");
@@ -446,9 +446,15 @@ export default function TaskList() {
       {error ? <div className="text-sm text-red-500">{error}</div> : null}
 
       <div className="space-y-4">
-        <details open className="space-y-2">
-          <summary className="text-sm font-semibold cursor-pointer select-none list-none flex items-center justify-between">
-            <span>未完成任务</span>
+        <details open className="space-y-2 group">
+          <summary className="text-sm font-semibold cursor-pointer select-none list-none flex items-center justify-between rounded-md border border-slate-200/70 dark:border-slate-800 px-3 py-2 bg-slate-50/70 dark:bg-slate-900/40 hover:bg-slate-100/70 dark:hover:bg-slate-900/70 transition">
+            <span className="flex items-center gap-2">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200/70 dark:bg-slate-800">
+                <ChevronDown className="w-4 h-4 group-open:hidden" />
+                <ChevronUp className="w-4 h-4 hidden group-open:block" />
+              </span>
+              未完成任务
+            </span>
             <span className="text-xs text-slate-500">共 {pendingTasks.length} 项</span>
           </summary>
           {pendingTasks.length ? (
@@ -459,9 +465,15 @@ export default function TaskList() {
             <div className="text-sm text-slate-500">暂无未完成任务</div>
           )}
         </details>
-        <details className="space-y-2">
-          <summary className="text-sm font-semibold cursor-pointer select-none list-none flex items-center justify-between">
-            <span>已完成任务</span>
+        <details className="space-y-2 group">
+          <summary className="text-sm font-semibold cursor-pointer select-none list-none flex items-center justify-between rounded-md border border-slate-200/70 dark:border-slate-800 px-3 py-2 bg-slate-50/70 dark:bg-slate-900/40 hover:bg-slate-100/70 dark:hover:bg-slate-900/70 transition">
+            <span className="flex items-center gap-2">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200/70 dark:bg-slate-800">
+                <ChevronDown className="w-4 h-4 group-open:hidden" />
+                <ChevronUp className="w-4 h-4 hidden group-open:block" />
+              </span>
+              已完成任务
+            </span>
             <span className="text-xs text-slate-500">共 {completedTasks.length} 项</span>
           </summary>
           {completedTasks.length ? (
