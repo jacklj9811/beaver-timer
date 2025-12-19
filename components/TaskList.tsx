@@ -321,6 +321,104 @@ export default function TaskList() {
     return map;
   }, [tags]);
 
+  const pendingTasks = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
+  const completedTasks = useMemo(() => tasks.filter((t) => t.done), [tasks]);
+
+  const renderTaskItem = (t: Task) => (
+    <li key={t.id} className="py-3 flex items-start justify-between gap-4">
+      <div className="min-w-0 flex-1 space-y-1">
+        {editingId === t.id ? (
+          <div className="flex gap-2 items-center">
+            <input
+              className="flex-1 rounded border px-2 py-1 bg-transparent"
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveName(t);
+              }}
+            />
+            <button className="px-3 py-1 rounded border" onClick={() => void saveName(t)}>
+              保存
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="font-medium truncate" title={t.name}>
+              {t.name}
+            </div>
+            <button className="text-xs underline" onClick={() => startEditing(t)}>
+              <Pencil className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 text-xs">
+          {t.tagIds?.map((tagId) => (
+            <span
+              key={tagId}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1"
+            >
+              {taskNameMap.get(tagId) ?? "未知标签"}
+              <button onClick={() => void removeTagFromTask(t, tagId)} aria-label="移除标签">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          <div className="flex items-center gap-1">
+            <input
+              className="rounded border px-2 py-1 bg-transparent text-xs"
+              placeholder="添加或创建标签"
+              value={tagInputs[t.id] ?? ""}
+              onChange={(e) => setTagInputs((prev) => ({ ...prev, [t.id]: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addTagToTask(t, tagInputs[t.id] ?? "");
+                }
+              }}
+              list={`tag-suggestions-${t.id}`}
+            />
+            <datalist id={`tag-suggestions-${t.id}`}>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.name} />
+              ))}
+            </datalist>
+            <button
+              className="text-xs underline"
+              onClick={() => void addTagToTask(t, tagInputs[t.id] ?? "")}
+            >
+              添加
+            </button>
+          </div>
+        </div>
+
+        <div className="text-xs opacity-70">优先级：{t.priority}</div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button onClick={() => void setActiveTask(t.id)} className="text-sm underline">
+          设为当前
+        </button>
+        <button
+          onClick={() => void toggleDone(t.id, !!t.done)}
+          className={`w-8 h-8 rounded border grid place-items-center ${
+            t.done ? "bg-emerald-500/20 border-emerald-500" : "border-slate-300 dark:border-slate-700"
+          }`}
+          title="完成/未完成"
+        >
+          {t.done ? <Check className="w-4 h-4" /> : null}
+        </button>
+        <button
+          onClick={() => void archiveTask(t)}
+          className="w-8 h-8 rounded border grid place-items-center border-red-300 text-red-600"
+          title="删除任务"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </li>
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
@@ -347,104 +445,28 @@ export default function TaskList() {
       </div>
       {error ? <div className="text-sm text-red-500">{error}</div> : null}
 
-      <ul className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
-        {tasks.map((t) => (
-          <li key={t.id} className="py-3 flex items-start justify-between gap-4">
-            <div className="min-w-0 flex-1 space-y-1">
-              {editingId === t.id ? (
-                <div className="flex gap-2 items-center">
-                  <input
-                    className="flex-1 rounded border px-2 py-1 bg-transparent"
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void saveName(t);
-                    }}
-                  />
-                  <button className="px-3 py-1 rounded border" onClick={() => void saveName(t)}>
-                    保存
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="font-medium truncate" title={t.name}>
-                    {t.name}
-                  </div>
-                  <button className="text-xs underline" onClick={() => startEditing(t)}>
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2 text-xs">
-                {t.tagIds?.map((tagId) => (
-                  <span
-                    key={tagId}
-                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1"
-                  >
-                    {taskNameMap.get(tagId) ?? "未知标签"}
-                    <button onClick={() => void removeTagFromTask(t, tagId)} aria-label="移除标签">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                <div className="flex items-center gap-1">
-                  <input
-                    className="rounded border px-2 py-1 bg-transparent text-xs"
-                    placeholder="添加或创建标签"
-                    value={tagInputs[t.id] ?? ""}
-                    onChange={(e) =>
-                      setTagInputs((prev) => ({ ...prev, [t.id]: e.target.value }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void addTagToTask(t, tagInputs[t.id] ?? "");
-                      }
-                    }}
-                    list={`tag-suggestions-${t.id}`}
-                  />
-                  <datalist id={`tag-suggestions-${t.id}`}>
-                    {tags.map((tag) => (
-                      <option key={tag.id} value={tag.name} />
-                    ))}
-                  </datalist>
-                  <button
-                    className="text-xs underline"
-                    onClick={() => void addTagToTask(t, tagInputs[t.id] ?? "")}
-                  >
-                    添加
-                  </button>
-                </div>
-              </div>
-
-              <div className="text-xs opacity-70">优先级：{t.priority}</div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button onClick={() => void setActiveTask(t.id)} className="text-sm underline">
-                设为当前
-              </button>
-              <button
-                onClick={() => void toggleDone(t.id, !!t.done)}
-                className={`w-8 h-8 rounded border grid place-items-center ${
-                  t.done ? "bg-emerald-500/20 border-emerald-500" : "border-slate-300 dark:border-slate-700"
-                }`}
-                title="完成/未完成"
-              >
-                {t.done ? <Check className="w-4 h-4" /> : null}
-              </button>
-              <button
-                onClick={() => void archiveTask(t)}
-                className="w-8 h-8 rounded border grid place-items-center border-red-300 text-red-600"
-                title="删除任务"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">未完成任务</h3>
+          {pendingTasks.length ? (
+            <ul className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+              {pendingTasks.map((t) => renderTaskItem(t))}
+            </ul>
+          ) : (
+            <div className="text-sm text-slate-500">暂无未完成任务</div>
+          )}
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">已完成任务</h3>
+          {completedTasks.length ? (
+            <ul className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+              {completedTasks.map((t) => renderTaskItem(t))}
+            </ul>
+          ) : (
+            <div className="text-sm text-slate-500">暂无已完成任务</div>
+          )}
+        </div>
+      </div>
 
       <TagManager
         open={showTagManager}
