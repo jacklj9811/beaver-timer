@@ -352,11 +352,7 @@ export default function TaskList() {
           isLeaving ? "max-h-0 opacity-0 translate-x-10" : "max-h-[240px] opacity-100 translate-x-0"
         }`}
       >
-        <div
-          className={`flex items-start gap-3 transition-transform duration-300 ${
-            isHoveringComplete ? "translate-x-6" : "translate-x-0"
-          }`}
-        >
+        <div className="flex items-start gap-3">
           <div className="flex flex-col items-center pt-3">
             {isPending ? (
               <div
@@ -405,7 +401,9 @@ export default function TaskList() {
             )}
           </div>
           <div
-            className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm"
+            className={`flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm transition-transform duration-300 ${
+              isHoveringComplete ? "translate-x-6" : "translate-x-0"
+            }`}
           >
             <div className="min-w-0 flex-1 space-y-1">
               {editingId === t.id ? (
