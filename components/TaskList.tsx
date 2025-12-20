@@ -45,6 +45,7 @@ export default function TaskList() {
   const [tagsReady, setTagsReady] = useState(false);
   const [tasksReady, setTasksReady] = useState(false);
   const [leavingIds, setLeavingIds] = useState<Record<string, boolean>>({});
+  const [hoveredCompleteId, setHoveredCompleteId] = useState<string | null>(null);
 
   useEffect(() => {
     let unsubTasks: (() => void) | null = null;
@@ -342,6 +343,7 @@ export default function TaskList() {
   const renderTaskItem = (t: Task, variant: "pending" | "completed") => {
     const isLeaving = !!leavingIds[t.id];
     const isPending = variant === "pending";
+    const isHoveringComplete = isPending && hoveredCompleteId === t.id;
 
     return (
       <li
@@ -350,18 +352,38 @@ export default function TaskList() {
           isLeaving ? "max-h-0 opacity-0 translate-x-10" : "max-h-[240px] opacity-100 translate-x-0"
         }`}
       >
-        <div className="flex items-start gap-3">
+        <div
+          className={`flex items-start gap-3 transition-transform duration-300 ${
+            isHoveringComplete ? "translate-x-6" : "translate-x-0"
+          }`}
+        >
           <div className="flex flex-col items-center pt-3">
             {isPending ? (
-              <div className="flex items-center gap-2">
+              <div
+                className="flex items-center gap-2"
+                onMouseLeave={() =>
+                  setHoveredCompleteId((current) => (current === t.id ? null : current))
+                }
+                onFocusCapture={() => setHoveredCompleteId(t.id)}
+                onBlurCapture={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setHoveredCompleteId((current) => (current === t.id ? null : current));
+                  }
+                }}
+              >
                 <button
                   type="button"
                   className="peer w-9 h-9 rounded-full border border-slate-300 dark:border-slate-700 grid place-items-center text-slate-500"
                   aria-label="标记完成"
+                  onMouseEnter={() => setHoveredCompleteId(t.id)}
                 >
                   <Check className="w-4 h-4 opacity-50" />
                 </button>
-                <div className="flex items-center gap-2 overflow-hidden max-w-0 opacity-0 translate-x-1 transition-all duration-300 peer-hover:max-w-[160px] peer-hover:opacity-100 peer-hover:translate-x-0 peer-focus-visible:max-w-[160px] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0">
+                <div
+                  className={`flex items-center gap-2 overflow-hidden transition-[max-width,opacity] duration-300 ${
+                    isHoveringComplete ? "max-w-[160px] opacity-100" : "max-w-0 opacity-0"
+                  }`}
+                >
                   <span className="text-xs text-slate-500 whitespace-nowrap">已完成？</span>
                   <button
                     type="button"
@@ -383,7 +405,7 @@ export default function TaskList() {
             )}
           </div>
           <div
-            className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm transition-transform duration-300 peer-hover:translate-x-6 peer-focus-visible:translate-x-6"
+            className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm"
           >
             <div className="min-w-0 flex-1 space-y-1">
               {editingId === t.id ? (
