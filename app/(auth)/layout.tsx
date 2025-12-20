@@ -8,12 +8,8 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh">
-      <body className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-        <main className="min-h-screen grid place-items-center">
-          {children}
-        </main>
-      </body>
-    </html>
+    <div className="min-h-screen grid place-items-center bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+      <main>{children}</main>
+    </div>
   );
 }
