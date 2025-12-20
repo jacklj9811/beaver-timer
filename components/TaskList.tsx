@@ -346,47 +346,45 @@ export default function TaskList() {
     return (
       <li
         key={t.id}
-        className={`group overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
+        className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
           isLeaving ? "max-h-0 opacity-0 translate-x-10" : "max-h-[240px] opacity-100 translate-x-0"
         }`}
       >
-        <div
-          className={`flex items-start justify-between gap-4 transition-transform duration-300 ${
-            isPending ? "group-hover:translate-x-6 group-focus-within:translate-x-6" : ""
-          } py-3`}
-        >
-          <div className="flex items-start gap-4 min-w-0 flex-1">
-            <div className="flex flex-col items-center">
-              {isPending ? (
-                <div className="flex items-center gap-2">
+        <div className="flex items-start gap-3">
+          <div className="flex flex-col items-center pt-3">
+            {isPending ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="peer w-9 h-9 rounded-full border border-slate-300 dark:border-slate-700 grid place-items-center text-slate-500"
+                  aria-label="标记完成"
+                >
+                  <Check className="w-4 h-4 opacity-50" />
+                </button>
+                <div className="flex items-center gap-2 overflow-hidden max-w-0 opacity-0 translate-x-1 transition-all duration-300 peer-hover:max-w-[160px] peer-hover:opacity-100 peer-hover:translate-x-0 peer-focus-visible:max-w-[160px] peer-focus-visible:opacity-100 peer-focus-visible:translate-x-0">
+                  <span className="text-xs text-slate-500 whitespace-nowrap">已完成？</span>
                   <button
                     type="button"
-                    className="w-9 h-9 rounded-full border border-slate-300 dark:border-slate-700 grid place-items-center text-slate-500"
-                    aria-label="标记完成"
+                    className="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-600 hover:bg-emerald-500/10"
+                    onClick={() => handleConfirmComplete(t)}
                   >
-                    <Check className="w-4 h-4 opacity-50" />
+                    确认
                   </button>
-                  <div className="flex items-center gap-2 overflow-hidden max-w-0 opacity-0 translate-x-1 transition-all duration-300 group-hover:max-w-[160px] group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:max-w-[160px] group-focus-within:opacity-100 group-focus-within:translate-x-0">
-                    <span className="text-xs text-slate-500 whitespace-nowrap">已完成？</span>
-                    <button
-                      type="button"
-                      className="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-600 hover:bg-emerald-500/10"
-                      onClick={() => handleConfirmComplete(t)}
-                    >
-                      确认
-                    </button>
-                  </div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => void toggleDone(t.id, true)}
-                  className="w-9 h-9 rounded-full border border-emerald-500/70 text-emerald-600 grid place-items-center"
-                  title="恢复未完成"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => void toggleDone(t.id, true)}
+                className="peer w-9 h-9 rounded-full border border-emerald-500/70 text-emerald-600 grid place-items-center"
+                title="恢复未完成"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <div
+            className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm transition-transform duration-300 peer-hover:translate-x-6 peer-focus-visible:translate-x-6"
+          >
             <div className="min-w-0 flex-1 space-y-1">
               {editingId === t.id ? (
                 <div className="flex gap-2 items-center">
@@ -455,19 +453,18 @@ export default function TaskList() {
 
               <div className="text-xs opacity-70">优先级：{t.priority}</div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button onClick={() => void setActiveTask(t.id)} className="text-sm underline">
-              设为当前
-            </button>
-            <button
-              onClick={() => void archiveTask(t)}
-              className="w-8 h-8 rounded border grid place-items-center border-red-300 text-red-600"
-              title="删除任务"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => void setActiveTask(t.id)} className="text-sm underline">
+                设为当前
+              </button>
+              <button
+                onClick={() => void archiveTask(t)}
+                className="w-8 h-8 rounded border grid place-items-center border-red-300 text-red-600"
+                title="删除任务"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </li>
@@ -513,7 +510,7 @@ export default function TaskList() {
             <span className="text-xs text-slate-500">共 {pendingTasks.length} 项</span>
           </summary>
           {pendingTasks.length ? (
-            <ul className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+            <ul className="space-y-3">
               {pendingTasks.map((t) => renderTaskItem(t, "pending"))}
             </ul>
           ) : (
@@ -532,7 +529,7 @@ export default function TaskList() {
             <span className="text-xs text-slate-500">共 {completedTasks.length} 项</span>
           </summary>
           {completedTasks.length ? (
-            <ul className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+            <ul className="space-y-3">
               {completedTasks.map((t) => renderTaskItem(t, "completed"))}
             </ul>
           ) : (
