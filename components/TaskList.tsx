@@ -356,7 +356,7 @@ export default function TaskList() {
           <div className="flex flex-col items-center pt-3">
             {isPending ? (
               <div
-                className="flex items-center gap-2"
+                className="relative flex items-center w-9"
                 onMouseLeave={() =>
                   setHoveredCompleteId((current) => (current === t.id ? null : current))
                 }
@@ -376,8 +376,10 @@ export default function TaskList() {
                   <Check className="w-4 h-4 opacity-50" />
                 </button>
                 <div
-                  className={`flex items-center gap-2 overflow-hidden transition-[max-width,opacity] duration-300 ${
-                    isHoveringComplete ? "max-w-[160px] opacity-100" : "max-w-0 opacity-0"
+                  className={`absolute left-12 top-1/2 flex items-center gap-2 whitespace-nowrap transition-[opacity,transform] duration-300 -translate-y-1/2 ${
+                    isHoveringComplete
+                      ? "opacity-100 translate-x-0 pointer-events-auto"
+                      : "opacity-0 translate-x-2 pointer-events-none"
                   }`}
                 >
                   <span className="text-xs text-slate-500 whitespace-nowrap">已完成？</span>
