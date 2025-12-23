@@ -19,7 +19,7 @@ import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
 import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
-import { Check, Plus, Tag as TagIcon, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Tag as TagIcon, X, ChevronDown, ChevronUp } from "lucide-react";
 import TagManager from "./TagManager";
 
 const TAG_COLLECTION = (uid: string) => collection(db, "users", uid, "tags");
@@ -377,165 +377,145 @@ export default function TaskList() {
           isLeaving ? "max-h-0 opacity-0 translate-x-10" : "max-h-[240px] opacity-100 translate-x-0"
         }`}
       >
-        <div className="flex items-start gap-3">
-          <div className="flex flex-col items-center pt-3">
-            <div
-              className={`w-9 h-9 rounded-full border grid place-items-center ${
-                isPending
-                  ? "border-slate-300 text-slate-400 dark:border-slate-700"
-                  : "border-emerald-500/70 text-emerald-600"
-              }`}
-              aria-hidden="true"
-            >
-              <Check className={`w-4 h-4 ${isPending ? "opacity-40" : ""}`} />
+        <div
+          onClick={(event) => handleTaskClick(t.id, event)}
+          className={`flex min-w-0 flex-1 cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 shadow-sm transition-transform duration-300 dark:border-slate-800/80 dark:bg-slate-900/50 ${
+            isActive
+              ? "border-indigo-400/80 bg-indigo-50/80 ring-2 ring-indigo-200/70 dark:border-indigo-300/70 dark:bg-indigo-500/10 dark:ring-indigo-400/30"
+              : ""
+          }`}
+        >
+          <div className="min-w-0 flex-1 space-y-1">
+            {editingId === t.id ? (
+              <div className="flex gap-2 items-center">
+                <input
+                  ref={editingInputRef}
+                  className="flex-1 rounded border px-2 py-1 bg-transparent"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onBlur={() => void saveName(t)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveName(t);
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={`font-medium w-[12ch] max-w-[12ch] overflow-hidden whitespace-nowrap text-left ${
+                    t.name.length > 12 ? "task-name-ticker-container" : ""
+                  }`}
+                  title={t.name}
+                  onClick={() => startEditing(t)}
+                >
+                  <span className={t.name.length > 12 ? "task-name-ticker" : undefined}>
+                    {t.name}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 text-xs">
+              {t.tagIds?.map((tagId) => (
+                <span
+                  key={tagId}
+                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1"
+                >
+                  {taskNameMap.get(tagId) ?? "未知标签"}
+                  <button onClick={() => void removeTagFromTask(t, tagId)} aria-label="移除标签">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <div className="flex items-center gap-1">
+                <input
+                  className="rounded border px-2 py-1 bg-transparent text-xs"
+                  placeholder="添加或创建标签"
+                  value={tagInputs[t.id] ?? ""}
+                  onChange={(e) => setTagInputs((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void addTagToTask(t, tagInputs[t.id] ?? "");
+                    }
+                  }}
+                  list={`tag-suggestions-${t.id}`}
+                />
+                <datalist id={`tag-suggestions-${t.id}`}>
+                  {tags.map((tag) => (
+                    <option key={tag.id} value={tag.name} />
+                  ))}
+                </datalist>
+                <button
+                  className="text-xs underline"
+                  onClick={() => void addTagToTask(t, tagInputs[t.id] ?? "")}
+                >
+                  添加
+                </button>
+              </div>
             </div>
+
+            <div className="text-xs opacity-70">优先级：{t.priority}</div>
           </div>
           <div
-            onClick={(event) => handleTaskClick(t.id, event)}
-            className={`flex min-w-0 flex-1 cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 shadow-sm transition-transform duration-300 dark:border-slate-800/80 dark:bg-slate-900/50 ${
-              isActive
-                ? "border-indigo-400/80 bg-indigo-50/80 ring-2 ring-indigo-200/70 dark:border-indigo-300/70 dark:bg-indigo-500/10 dark:ring-indigo-400/30"
-                : ""
-            }`}
-          >
-            <div className="min-w-0 flex-1 space-y-1">
-              {editingId === t.id ? (
-                <div className="flex gap-2 items-center">
-                  <input
-                    ref={editingInputRef}
-                    className="flex-1 rounded border px-2 py-1 bg-transparent"
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onBlur={() => void saveName(t)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void saveName(t);
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`font-medium w-[12ch] max-w-[12ch] overflow-hidden whitespace-nowrap ${
-                      t.name.length > 12 ? "task-name-ticker-container" : ""
-                    }`}
-                    title={t.name}
-                  >
-                    <span className={t.name.length > 12 ? "task-name-ticker" : undefined}>
-                      {t.name}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="font-medium truncate text-left"
-                    title={t.name}
-                    onClick={() => startEditing(t)}
-                  >
-                    {t.name}
-                  </button>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2 text-xs">
-                {t.tagIds?.map((tagId) => (
-                  <span
-                    key={tagId}
-                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1"
-                  >
-                    {taskNameMap.get(tagId) ?? "未知标签"}
-                    <button onClick={() => void removeTagFromTask(t, tagId)} aria-label="移除标签">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                <div className="flex items-center gap-1">
-                  <input
-                    className="rounded border px-2 py-1 bg-transparent text-xs"
-                    placeholder="添加或创建标签"
-                    value={tagInputs[t.id] ?? ""}
-                    onChange={(e) => setTagInputs((prev) => ({ ...prev, [t.id]: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void addTagToTask(t, tagInputs[t.id] ?? "");
-                      }
-                    }}
-                    list={`tag-suggestions-${t.id}`}
-                  />
-                  <datalist id={`tag-suggestions-${t.id}`}>
-                    {tags.map((tag) => (
-                      <option key={tag.id} value={tag.name} />
-                    ))}
-                  </datalist>
-                  <button
-                    className="text-xs underline"
-                    onClick={() => void addTagToTask(t, tagInputs[t.id] ?? "")}
-                  >
-                    添加
-                  </button>
-                </div>
-              </div>
-
-              <div className="text-xs opacity-70">优先级：{t.priority}</div>
-            </div>
-            <div
-              className="group/action relative flex items-center justify-end w-[152px] shrink-0"
-              onMouseLeave={() =>
-                setHoveredAction((current) => (current?.id === t.id ? null : current))
+            className="group/action relative flex items-center justify-end w-[152px] shrink-0"
+            onMouseLeave={() =>
+              setHoveredAction((current) => (current?.id === t.id ? null : current))
+            }
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setHoveredAction((current) => (current?.id === t.id ? null : current));
               }
-              onBlurCapture={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                  setHoveredAction((current) => (current?.id === t.id ? null : current));
-                }
-              }}
-            >
-              <div className="absolute right-9 top-1/2 -translate-y-1/2">
-                <div
-                  className={`grid w-[120px] grid-cols-2 overflow-hidden rounded-full border border-slate-200/70 bg-white/90 text-xs shadow-sm transition-all duration-200 ease-out dark:border-slate-700 dark:bg-slate-900/90 ${
-                    isConfirmingAny ? "opacity-100 translate-x-0 pointer-events-auto" : "opacity-0 translate-x-3 pointer-events-none"
-                  } group-hover/action:opacity-100 group-hover/action:translate-x-0 group-hover/action:pointer-events-auto group-hover/action:delay-100`}
-                >
-                  <button
-                    type="button"
-                    className={`h-8 w-full px-2 text-center transition-colors ${
-                      isConfirmingComplete ? "text-emerald-600" : "text-slate-600"
-                    } ${isConfirmingAny && !isConfirmingComplete ? "opacity-50" : ""}`}
-                    onMouseEnter={() => setHoveredAction({ id: t.id, action: "complete" })}
-                    onFocus={() => setHoveredAction({ id: t.id, action: "complete" })}
-                    onClick={() => {
-                      if (!isConfirmingComplete) return;
-                      if (isPending) {
-                        handleConfirmComplete(t);
-                      } else {
-                        void toggleDone(t.id, true);
-                      }
-                    }}
-                  >
-                    {isConfirmingComplete ? confirmLabel : completeLabel}
-                  </button>
-                  <button
-                    type="button"
-                    className={`h-8 w-full px-2 text-center transition-colors ${
-                      isConfirmingDelete ? "text-red-600" : "text-slate-600"
-                    } ${isConfirmingAny && !isConfirmingDelete ? "opacity-50" : ""}`}
-                    onMouseEnter={() => setHoveredAction({ id: t.id, action: "delete" })}
-                    onFocus={() => setHoveredAction({ id: t.id, action: "delete" })}
-                    onClick={() => {
-                      if (!isConfirmingDelete) return;
-                      void archiveTask(t);
-                    }}
-                  >
-                    {isConfirmingDelete ? "删除？" : "删除"}
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="relative z-10 h-8 w-8 rounded-full border border-slate-200/70 text-slate-500 transition-colors hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                aria-label="任务操作"
+            }}
+          >
+            <div className="absolute right-9 top-1/2 -translate-y-1/2">
+              <div
+                className={`grid w-[120px] grid-cols-2 overflow-hidden rounded-full border border-slate-200/70 bg-white/90 text-xs shadow-sm transition-all duration-200 ease-out dark:border-slate-700 dark:bg-slate-900/90 ${
+                  isConfirmingAny ? "opacity-100 translate-x-0 pointer-events-auto" : "opacity-0 translate-x-3 pointer-events-none"
+                } group-hover/action:opacity-100 group-hover/action:translate-x-0 group-hover/action:pointer-events-auto group-hover/action:delay-100`}
               >
-                ⋯
-              </button>
+                <button
+                  type="button"
+                  className={`h-8 w-full px-2 text-center transition-colors ${
+                    isConfirmingComplete ? "text-emerald-600" : "text-slate-600"
+                  } ${isConfirmingAny && !isConfirmingComplete ? "opacity-50" : ""}`}
+                  onMouseEnter={() => setHoveredAction({ id: t.id, action: "complete" })}
+                  onFocus={() => setHoveredAction({ id: t.id, action: "complete" })}
+                  onClick={() => {
+                    if (!isConfirmingComplete) return;
+                    if (isPending) {
+                      handleConfirmComplete(t);
+                    } else {
+                      void toggleDone(t.id, true);
+                    }
+                  }}
+                >
+                  {isConfirmingComplete ? confirmLabel : completeLabel}
+                </button>
+                <button
+                  type="button"
+                  className={`h-8 w-full px-2 text-center transition-colors ${
+                    isConfirmingDelete ? "text-red-600" : "text-slate-600"
+                  } ${isConfirmingAny && !isConfirmingDelete ? "opacity-50" : ""}`}
+                  onMouseEnter={() => setHoveredAction({ id: t.id, action: "delete" })}
+                  onFocus={() => setHoveredAction({ id: t.id, action: "delete" })}
+                  onClick={() => {
+                    if (!isConfirmingDelete) return;
+                    void archiveTask(t);
+                  }}
+                >
+                  {isConfirmingDelete ? "删除？" : "删除"}
+                </button>
+              </div>
             </div>
+            <button
+              type="button"
+              className="relative z-10 h-8 w-8 rounded-full border border-slate-200/70 text-slate-500 transition-colors hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
+              aria-label="任务操作"
+            >
+              ⋯
+            </button>
           </div>
         </div>
       </li>
