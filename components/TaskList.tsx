@@ -46,11 +46,13 @@ export default function TaskList() {
   const [tagsReady, setTagsReady] = useState(false);
   const [tasksReady, setTasksReady] = useState(false);
   const [leavingIds, setLeavingIds] = useState<Record<string, boolean>>({});
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [hoveredAction, setHoveredAction] = useState<{
     id: string;
     action: "complete" | "delete";
   } | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
+  const closeMenuTimeout = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   useEffect(() => {
     let unsubTasks: (() => void) | null = null;
@@ -364,11 +366,25 @@ export default function TaskList() {
     const isLeaving = !!leavingIds[t.id];
     const isPending = variant === "pending";
     const isActive = activeTaskId === t.id;
+    const isActionOpen = actionMenuId === t.id;
     const isConfirmingComplete = hoveredAction?.id === t.id && hoveredAction.action === "complete";
     const isConfirmingDelete = hoveredAction?.id === t.id && hoveredAction.action === "delete";
     const isConfirmingAny = hoveredAction?.id === t.id;
     const completeLabel = isPending ? "完成" : "恢复";
     const confirmLabel = isPending ? "已完成？" : "恢复？";
+    const clearCloseTimer = () => {
+      if (closeMenuTimeout.current) {
+        window.clearTimeout(closeMenuTimeout.current);
+        closeMenuTimeout.current = null;
+      }
+    };
+    const scheduleCloseMenu = () => {
+      clearCloseTimer();
+      closeMenuTimeout.current = window.setTimeout(() => {
+        setActionMenuId((current) => (current === t.id ? null : current));
+        setHoveredAction((current) => (current?.id === t.id ? null : current));
+      }, 160);
+    };
 
     return (
       <li
@@ -459,21 +475,26 @@ export default function TaskList() {
             <div className="text-xs opacity-70">优先级：{t.priority}</div>
           </div>
           <div
-            className="group/action relative flex items-center justify-end w-[152px] shrink-0"
-            onMouseLeave={() =>
-              setHoveredAction((current) => (current?.id === t.id ? null : current))
-            }
+            className="relative flex items-center justify-end w-[152px] shrink-0"
+            onMouseLeave={scheduleCloseMenu}
             onBlurCapture={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setHoveredAction((current) => (current?.id === t.id ? null : current));
+                scheduleCloseMenu();
               }
             }}
           >
             <div className="absolute right-9 top-1/2 -translate-y-1/2">
               <div
                 className={`grid w-[120px] grid-cols-2 overflow-hidden rounded-full border border-slate-200/70 bg-white/90 text-xs shadow-sm transition-all duration-200 ease-out dark:border-slate-700 dark:bg-slate-900/90 ${
-                  isConfirmingAny ? "opacity-100 translate-x-0 pointer-events-auto" : "opacity-0 translate-x-3 pointer-events-none"
-                } group-hover/action:opacity-100 group-hover/action:translate-x-0 group-hover/action:pointer-events-auto group-hover/action:delay-100`}
+                  isActionOpen
+                    ? "opacity-100 translate-x-0 pointer-events-auto"
+                    : "opacity-0 translate-x-3 pointer-events-none"
+                }`}
+                onMouseEnter={() => {
+                  clearCloseTimer();
+                  setActionMenuId(t.id);
+                }}
+                onMouseLeave={scheduleCloseMenu}
               >
                 <button
                   type="button"
@@ -513,6 +534,15 @@ export default function TaskList() {
               type="button"
               className="relative z-10 h-8 w-8 rounded-full border border-slate-200/70 text-slate-500 transition-colors hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
               aria-label="任务操作"
+              onMouseEnter={() => {
+                clearCloseTimer();
+                setActionMenuId(t.id);
+              }}
+              onFocus={() => {
+                clearCloseTimer();
+                setActionMenuId(t.id);
+              }}
+              onMouseLeave={scheduleCloseMenu}
             >
               ⋯
             </button>
