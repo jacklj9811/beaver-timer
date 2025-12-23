@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -19,7 +19,7 @@ import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
 import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
-import { Check, Plus, Tag as TagIcon, X, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Tag as TagIcon, X, Pencil, ChevronDown, ChevronUp } from "lucide-react";
 import TagManager from "./TagManager";
 
 const TAG_COLLECTION = (uid: string) => collection(db, "users", uid, "tags");
@@ -45,7 +45,20 @@ export default function TaskList() {
   const [tagsReady, setTagsReady] = useState(false);
   const [tasksReady, setTasksReady] = useState(false);
   const [leavingIds, setLeavingIds] = useState<Record<string, boolean>>({});
-  const [hoveredCompleteId, setHoveredCompleteId] = useState<string | null>(null);
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [hoveredAction, setHoveredAction] = useState<{
+    id: string;
+    action: "complete" | "delete" | "restore";
+  } | null>(null);
+  const actionCloseTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (actionCloseTimer.current) {
+        window.clearTimeout(actionCloseTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let unsubTasks: (() => void) | null = null;
@@ -340,10 +353,33 @@ export default function TaskList() {
     }, COMPLETE_ANIMATION_MS);
   };
 
+  const openActionMenu = (id: string) => {
+    if (actionCloseTimer.current) {
+      window.clearTimeout(actionCloseTimer.current);
+      actionCloseTimer.current = null;
+    }
+    setOpenActionId(id);
+  };
+
+  const scheduleCloseActionMenu = (id: string) => {
+    if (actionCloseTimer.current) {
+      window.clearTimeout(actionCloseTimer.current);
+    }
+    actionCloseTimer.current = window.setTimeout(() => {
+      setOpenActionId((current) => (current === id ? null : current));
+      setHoveredAction((current) => (current?.id === id ? null : current));
+      actionCloseTimer.current = null;
+    }, 160);
+  };
+
   const renderTaskItem = (t: Task, variant: "pending" | "completed") => {
     const isLeaving = !!leavingIds[t.id];
     const isPending = variant === "pending";
-    const isHoveringComplete = isPending && hoveredCompleteId === t.id;
+    const isActionOpen = openActionId === t.id;
+    const isConfirmingComplete =
+      hoveredAction?.id === t.id && hoveredAction.action === (isPending ? "complete" : "restore");
+    const isConfirmingDelete = hoveredAction?.id === t.id && hoveredAction.action === "delete";
+    const shouldDimOther = isConfirmingComplete || isConfirmingDelete;
 
     return (
       <li
@@ -353,60 +389,7 @@ export default function TaskList() {
         }`}
       >
         <div className="flex items-start gap-3">
-          <div className="flex flex-col items-center pt-3">
-            {isPending ? (
-              <div
-                className="relative flex items-center w-9"
-                onMouseLeave={() =>
-                  setHoveredCompleteId((current) => (current === t.id ? null : current))
-                }
-                onFocusCapture={() => setHoveredCompleteId(t.id)}
-                onBlurCapture={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                    setHoveredCompleteId((current) => (current === t.id ? null : current));
-                  }
-                }}
-              >
-                <button
-                  type="button"
-                  className="peer w-9 h-9 rounded-full border border-slate-300 dark:border-slate-700 grid place-items-center text-slate-500"
-                  aria-label="标记完成"
-                  onMouseEnter={() => setHoveredCompleteId(t.id)}
-                >
-                  <Check className="w-4 h-4 opacity-50" />
-                </button>
-                <div
-                  className={`absolute left-11 flex items-center gap-0 whitespace-nowrap transition-[opacity,transform] duration-300 ${
-                    isHoveringComplete
-                      ? "opacity-100 translate-x-0 pointer-events-auto"
-                      : "opacity-0 translate-x-0 pointer-events-none"
-                  }`}
-                >
-                  <span className="text-xs text-slate-500 whitespace-nowrap">已完成？</span>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-600 hover:bg-emerald-500/10"
-                    onClick={() => handleConfirmComplete(t)}
-                  >
-                    确认
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => void toggleDone(t.id, true)}
-                className="peer w-9 h-9 rounded-full border border-emerald-500/70 text-emerald-600 grid place-items-center"
-                title="恢复未完成"
-              >
-                <Check className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          <div
-            className={`flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm transition-transform duration-300 ${
-              isHoveringComplete ? "translate-x-20" : "translate-x-0"
-            }`}
-          >
+          <div className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm">
             <div className="min-w-0 flex-1 space-y-1">
               {editingId === t.id ? (
                 <div className="flex gap-2 items-center">
@@ -475,17 +458,129 @@ export default function TaskList() {
 
               <div className="text-xs opacity-70">优先级：{t.priority}</div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <button onClick={() => void setActiveTask(t.id)} className="text-sm underline">
                 设为当前
               </button>
-              <button
-                onClick={() => void archiveTask(t)}
-                className="w-8 h-8 rounded border grid place-items-center border-red-300 text-red-600"
-                title="删除任务"
+              <div
+                className="relative flex items-center px-2 py-2"
+                onMouseEnter={() => openActionMenu(t.id)}
+                onMouseLeave={() => scheduleCloseActionMenu(t.id)}
+                onFocusCapture={() => openActionMenu(t.id)}
+                onBlurCapture={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    scheduleCloseActionMenu(t.id);
+                  }
+                }}
               >
-                <Trash2 className="w-4 h-4" />
-              </button>
+                <div className="relative flex items-center rounded-full border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/70 px-2 py-1 shadow-sm">
+                  <button
+                    type="button"
+                    className="grid h-8 w-8 place-items-center rounded-full text-slate-500 hover:text-slate-700"
+                    aria-label="任务操作"
+                  >
+                    ⋯
+                  </button>
+                  <div
+                    className={`absolute right-10 top-1/2 flex -translate-y-1/2 items-center transition-[opacity,transform] duration-300 ${
+                      isActionOpen
+                        ? "opacity-100 translate-x-0"
+                        : "opacity-0 translate-x-4 pointer-events-none"
+                    }`}
+                  >
+                    <div className="flex w-[168px] items-center gap-2">
+                      <button
+                        type="button"
+                        className={`relative h-8 w-20 rounded-full border text-xs transition-opacity ${
+                          shouldDimOther && !isConfirmingComplete ? "opacity-40" : "opacity-100"
+                        } ${
+                          isPending
+                            ? "border-emerald-300 text-emerald-600"
+                            : "border-slate-300 text-slate-600"
+                        }`}
+                        onMouseEnter={() =>
+                          setHoveredAction({
+                            id: t.id,
+                            action: isPending ? "complete" : "restore",
+                          })
+                        }
+                        onMouseLeave={() =>
+                          setHoveredAction((current) => (current?.id === t.id ? null : current))
+                        }
+                        onFocusCapture={() =>
+                          setHoveredAction({
+                            id: t.id,
+                            action: isPending ? "complete" : "restore",
+                          })
+                        }
+                        onBlurCapture={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            setHoveredAction((current) => (current?.id === t.id ? null : current));
+                          }
+                        }}
+                        onClick={() => {
+                          if (!isConfirmingComplete) return;
+                          if (isPending) {
+                            handleConfirmComplete(t);
+                          } else {
+                            void toggleDone(t.id, true);
+                          }
+                        }}
+                      >
+                        <span
+                          className={`flex items-center justify-center transition-opacity ${
+                            isConfirmingComplete ? "opacity-0" : "opacity-100"
+                          }`}
+                        >
+                          {isPending ? "完成" : "恢复"}
+                        </span>
+                        <span
+                          className={`absolute inset-0 flex items-center justify-center whitespace-nowrap transition-opacity ${
+                            isConfirmingComplete ? "opacity-100" : "opacity-0"
+                          }`}
+                        >
+                          {isPending ? "已完成？" : "恢复？"}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`relative h-8 w-20 rounded-full border border-rose-300 text-xs text-rose-600 transition-opacity ${
+                          shouldDimOther && !isConfirmingDelete ? "opacity-40" : "opacity-100"
+                        }`}
+                        onMouseEnter={() => setHoveredAction({ id: t.id, action: "delete" })}
+                        onMouseLeave={() =>
+                          setHoveredAction((current) => (current?.id === t.id ? null : current))
+                        }
+                        onFocusCapture={() => setHoveredAction({ id: t.id, action: "delete" })}
+                        onBlurCapture={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            setHoveredAction((current) => (current?.id === t.id ? null : current));
+                          }
+                        }}
+                        onClick={() => {
+                          if (!isConfirmingDelete) return;
+                          void archiveTask(t);
+                        }}
+                      >
+                        <span
+                          className={`flex items-center justify-center transition-opacity ${
+                            isConfirmingDelete ? "opacity-0" : "opacity-100"
+                          }`}
+                        >
+                          删除
+                        </span>
+                        <span
+                          className={`absolute inset-0 flex items-center justify-center whitespace-nowrap transition-opacity ${
+                            isConfirmingDelete ? "opacity-100" : "opacity-0"
+                          }`}
+                        >
+                          删除？
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
