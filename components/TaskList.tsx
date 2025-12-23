@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -33,6 +33,7 @@ export default function TaskList() {
   const setArchivedTasks = useStore((s) => s.setArchivedTasks);
   const setTags = useStore((s) => s.setTags);
   const setTimer = useStore((s) => s.setTimer);
+  const activeTaskId = useStore((s) => s.timer.activeTaskId);
 
   const [uid, setUid] = useState<string | null>(null);
   const [rawTasks, setRawTasks] = useState<Task[]>([]);
@@ -340,10 +341,17 @@ export default function TaskList() {
     }, COMPLETE_ANIMATION_MS);
   };
 
+  const handleTaskClick = (id: string, event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, input, textarea, select, a, label")) return;
+    void setActiveTask(id);
+  };
+
   const renderTaskItem = (t: Task, variant: "pending" | "completed") => {
     const isLeaving = !!leavingIds[t.id];
     const isPending = variant === "pending";
     const isHoveringComplete = isPending && hoveredCompleteId === t.id;
+    const isActive = activeTaskId === t.id;
 
     return (
       <li
@@ -403,8 +411,13 @@ export default function TaskList() {
             )}
           </div>
           <div
-            className={`flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm transition-transform duration-300 ${
+            onClick={(event) => handleTaskClick(t.id, event)}
+            className={`flex min-w-0 flex-1 cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 shadow-sm transition-transform duration-300 dark:border-slate-800/80 dark:bg-slate-900/50 ${
               isHoveringComplete ? "translate-x-20" : "translate-x-0"
+            } ${
+              isActive
+                ? "border-indigo-400/80 bg-indigo-50/80 ring-2 ring-indigo-200/70 dark:border-indigo-300/70 dark:bg-indigo-500/10 dark:ring-indigo-400/30"
+                : ""
             }`}
           >
             <div className="min-w-0 flex-1 space-y-1">
@@ -476,9 +489,6 @@ export default function TaskList() {
               <div className="text-xs opacity-70">优先级：{t.priority}</div>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => void setActiveTask(t.id)} className="text-sm underline">
-                设为当前
-              </button>
               <button
                 onClick={() => void archiveTask(t)}
                 className="w-8 h-8 rounded border grid place-items-center border-red-300 text-red-600"
