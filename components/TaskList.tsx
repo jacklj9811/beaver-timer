@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -11,7 +11,6 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
   deleteDoc,
   setDoc,
   serverTimestamp,
@@ -20,7 +19,7 @@ import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
 import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
-import { Plus, Tag as TagIcon, X, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { Plus, Tag as TagIcon, X, ChevronDown, ChevronUp } from "lucide-react";
 import TagManager from "./TagManager";
 
 const TAG_COLLECTION = (uid: string) => collection(db, "users", uid, "tags");
@@ -51,8 +50,6 @@ export default function TaskList() {
     id: string;
     action: "complete" | "delete";
   } | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -77,18 +74,17 @@ export default function TaskList() {
         { merge: true }
       );
 
-      const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid), orderBy("order", "asc"));
+      const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
       const tagsCol = TAG_COLLECTION(u.uid);
 
       unsubTasks = onSnapshot(tasksQuery, (snap) => {
         const list = snap.docs.map((d) => {
           const data = d.data() as any;
-          const order = typeof data.order === "number" ? data.order : undefined;
           return {
             id: d.id,
             name: data.name ?? "",
             tagIds: data.tagIds ?? data.tags ?? [],
-            order,
+            priority: data.priority ?? "medium",
             done: data.done ?? false,
             archived: data.archived ?? false,
           } satisfies Task;
@@ -120,19 +116,10 @@ export default function TaskList() {
       const active: Task[] = [];
       const archived: Task[] = [];
       const looksLikeId = (text: string) => /^[A-Za-z0-9]{16,}$/.test(text);
-      const existingOrders = rawTasks
-        .map((task) => task.order)
-        .filter((order): order is number => typeof order === "number");
-      let nextOrder = existingOrders.length ? Math.max(...existingOrders) + 1 : 0;
 
       for (const task of rawTasks) {
         const normalizedTagIds: string[] = [];
         const rawTagIds = Array.isArray(task.tagIds) ? task.tagIds : [];
-        let order = typeof task.order === "number" ? task.order : undefined;
-        if (order === undefined) {
-          order = nextOrder;
-          nextOrder += 1;
-        }
 
         for (const ref of rawTagIds) {
           const value = typeof ref === "string" ? ref.trim() : "";
@@ -163,19 +150,17 @@ export default function TaskList() {
         }
 
         const dedupedTagIds = Array.from(new Set(normalizedTagIds));
-        const needsTagUpdate =
+        const needsUpdate =
           dedupedTagIds.length !== rawTagIds.length ||
           dedupedTagIds.some((id, idx) => rawTagIds[idx] !== id);
-        const needsOrderUpdate = order !== task.order;
 
-        const normalizedTask: Task = { ...task, tagIds: dedupedTagIds, order };
+        const normalizedTask: Task = { ...task, tagIds: dedupedTagIds };
         if (task.archived) archived.push(normalizedTask);
         else active.push(normalizedTask);
 
-        if (needsTagUpdate || needsOrderUpdate) {
+        if (needsUpdate) {
           await updateDoc(doc(db, "tasks", task.id), {
-            ...(needsTagUpdate ? { tagIds: dedupedTagIds } : {}),
-            ...(needsOrderUpdate ? { order } : {}),
+            tagIds: dedupedTagIds,
           });
         }
       }
@@ -218,9 +203,6 @@ export default function TaskList() {
       return;
     }
 
-    const maxOrder = tasks.reduce((max, task) => Math.max(max, task.order ?? -1), -1);
-    const nextOrder = maxOrder + 1;
-
     const historical = archivedTasks.find((t) => t.name === name);
     if (historical) {
       const reuse = window.confirm(`检测到你曾创建过任务“${name}”，是否继承历史统计数据？`);
@@ -228,7 +210,6 @@ export default function TaskList() {
         await updateDoc(doc(db, "tasks", historical.id), {
           archived: false,
           done: false,
-          order: nextOrder,
           updatedAt: new Date(),
         });
         setInput("");
@@ -250,7 +231,7 @@ export default function TaskList() {
         const payload = {
           name,
           tagIds: [],
-          order: nextOrder,
+          priority: "medium" as const,
           done: false,
           archived: false,
           createdAt: new Date(),
@@ -272,7 +253,7 @@ export default function TaskList() {
     const payload = {
       name,
       tagIds: [],
-      order: nextOrder,
+      priority: "medium" as const,
       done: false,
       archived: false,
       createdAt: new Date(),
@@ -357,78 +338,8 @@ export default function TaskList() {
     return map;
   }, [tags]);
 
-  const sortByOrder = (a: Task, b: Task) => (a.order ?? 0) - (b.order ?? 0);
-  const pendingTasks = useMemo(
-    () => [...tasks.filter((t) => !t.done)].sort(sortByOrder),
-    [tasks]
-  );
-  const completedTasks = useMemo(
-    () => [...tasks.filter((t) => t.done)].sort(sortByOrder),
-    [tasks]
-  );
-
-  const persistOrder = async (ordered: Task[]) => {
-    if (!uid) return;
-    try {
-      await Promise.all(
-        ordered.map((task, index) =>
-          updateDoc(doc(db, "tasks", task.id), { order: index, updatedAt: new Date() })
-        )
-      );
-    } catch {
-      ordered.forEach((task, index) => {
-        pushOffline({ type: "task", payload: { action: "update", id: task.id, order: index } });
-      });
-    }
-  };
-
-  const applyOrder = (ordered: Task[]) => {
-    const orderMap = new Map(ordered.map((task, index) => [task.id, index]));
-    const nextTasks = tasks.map((task) => {
-      const order = orderMap.get(task.id);
-      return order === undefined ? task : { ...task, order };
-    });
-    setTasks(nextTasks);
-    void persistOrder(ordered);
-  };
-
-  const reorderList = (list: Task[], fromId: string, toId: string) => {
-    const fromIndex = list.findIndex((task) => task.id === fromId);
-    const toIndex = list.findIndex((task) => task.id === toId);
-    if (fromIndex === -1 || toIndex === -1) return null;
-    const next = [...list];
-    const [moved] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, moved);
-    return next;
-  };
-
-  const handleDragStart = (id: string) => (event: DragEvent) => {
-    event.dataTransfer.setData("text/plain", id);
-    event.dataTransfer.effectAllowed = "move";
-    setDraggingId(id);
-  };
-
-  const handleDragOver = (id: string) => (event: DragEvent) => {
-    event.preventDefault();
-    if (dragOverId !== id) setDragOverId(id);
-  };
-
-  const handleDrop = (list: Task[], targetId: string) => (event: DragEvent) => {
-    event.preventDefault();
-    const sourceId = draggingId ?? event.dataTransfer.getData("text/plain");
-    if (!sourceId || sourceId === targetId) {
-      setDragOverId(null);
-      return;
-    }
-    const reordered = reorderList(list, sourceId, targetId);
-    if (reordered) applyOrder(reordered);
-    setDragOverId(null);
-  };
-
-  const handleDragEnd = (_event?: DragEvent) => {
-    setDraggingId(null);
-    setDragOverId(null);
-  };
+  const pendingTasks = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
+  const completedTasks = useMemo(() => tasks.filter((t) => t.done), [tasks]);
 
   const handleConfirmComplete = (task: Task) => {
     if (leavingIds[task.id]) return;
@@ -449,16 +360,8 @@ export default function TaskList() {
     void setActiveTask(id);
   };
 
-  const renderTaskItem = (
-    t: Task,
-    variant: "pending" | "completed",
-    dragProps: {
-      onDragStart: (event: DragEvent) => void;
-      onDragEnd: (event: DragEvent) => void;
-      isDragging: boolean;
-      isOver: boolean;
-    }
-  ) => {
+  const renderTaskItem = (t: Task, variant: "pending" | "completed") => {
+    const isLeaving = !!leavingIds[t.id];
     const isPending = variant === "pending";
     const isActive = activeTaskId === t.id;
     const isConfirmingComplete = hoveredAction?.id === t.id && hoveredAction.action === "complete";
@@ -468,29 +371,20 @@ export default function TaskList() {
     const confirmLabel = isPending ? "已完成？" : "恢复？";
 
     return (
-      <div
-        onClick={(event) => handleTaskClick(t.id, event)}
-        className={`flex min-w-0 flex-1 cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 shadow-sm transition-transform duration-300 dark:border-slate-800/80 dark:bg-slate-900/50 ${
-          isActive
-            ? "border-indigo-400/80 bg-indigo-50/80 ring-2 ring-indigo-200/70 dark:border-indigo-300/70 dark:bg-indigo-500/10 dark:ring-indigo-400/30"
-            : ""
-        } ${dragProps.isDragging ? "scale-[0.99] opacity-90 shadow-md" : ""} ${
-          dragProps.isOver ? "ring-2 ring-indigo-200/70" : ""
+      <li
+        key={t.id}
+        className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
+          isLeaving ? "max-h-0 opacity-0 translate-x-10" : "max-h-[240px] opacity-100 translate-x-0"
         }`}
       >
-        <div className="flex min-w-0 flex-1 gap-3">
-          <button
-            type="button"
-            draggable
-            onDragStart={dragProps.onDragStart}
-            onDragEnd={dragProps.onDragEnd}
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 cursor-grab active:cursor-grabbing"
-            aria-label="拖拽排序"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+        <div
+          onClick={(event) => handleTaskClick(t.id, event)}
+          className={`flex min-w-0 flex-1 cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 shadow-sm transition-transform duration-300 dark:border-slate-800/80 dark:bg-slate-900/50 ${
+            isActive
+              ? "border-indigo-400/80 bg-indigo-50/80 ring-2 ring-indigo-200/70 dark:border-indigo-300/70 dark:bg-indigo-500/10 dark:ring-indigo-400/30"
+              : ""
+          }`}
+        >
           <div className="min-w-0 flex-1 space-y-1">
             {editingId === t.id ? (
               <div className="flex gap-2 items-center">
@@ -561,8 +455,9 @@ export default function TaskList() {
                 </button>
               </div>
             </div>
+
+            <div className="text-xs opacity-70">优先级：{t.priority}</div>
           </div>
-        </div>
           <div
             className="group/action relative flex items-center justify-end w-[152px] shrink-0"
             onMouseLeave={() =>
@@ -622,37 +517,7 @@ export default function TaskList() {
               ⋯
             </button>
           </div>
-      </div>
-    );
-  };
-
-  const TaskItem = ({
-    task,
-    variant,
-    list,
-  }: {
-    task: Task;
-    variant: "pending" | "completed";
-    list: Task[];
-  }) => {
-    const isLeaving = !!leavingIds[task.id];
-    const isDragging = draggingId === task.id;
-    const isOver = dragOverId === task.id && draggingId !== task.id;
-
-    return (
-      <li
-        onDragOver={handleDragOver(task.id)}
-        onDrop={handleDrop(list, task.id)}
-        className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
-          isLeaving ? "max-h-0 opacity-0 translate-x-10" : "max-h-[240px] opacity-100 translate-x-0"
-        }`}
-      >
-        {renderTaskItem(task, variant, {
-          onDragStart: handleDragStart(task.id),
-          onDragEnd: handleDragEnd,
-          isDragging,
-          isOver,
-        })}
+        </div>
       </li>
     );
   };
@@ -697,9 +562,7 @@ export default function TaskList() {
           </summary>
           {pendingTasks.length ? (
             <ul className="space-y-3">
-              {pendingTasks.map((t) => (
-                <TaskItem key={t.id} task={t} variant="pending" list={pendingTasks} />
-              ))}
+              {pendingTasks.map((t) => renderTaskItem(t, "pending"))}
             </ul>
           ) : (
             <div className="text-sm text-slate-500">暂无未完成任务</div>
@@ -718,9 +581,7 @@ export default function TaskList() {
           </summary>
           {completedTasks.length ? (
             <ul className="space-y-3">
-              {completedTasks.map((t) => (
-                <TaskItem key={t.id} task={t} variant="completed" list={completedTasks} />
-              ))}
+              {completedTasks.map((t) => renderTaskItem(t, "completed"))}
             </ul>
           ) : (
             <div className="text-sm text-slate-500">暂无已完成任务</div>

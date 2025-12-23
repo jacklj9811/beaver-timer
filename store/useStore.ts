@@ -10,7 +10,7 @@ export type Task = {
   id: string;
   name: string;
   tagIds: string[];
-  order?: number;
+  priority: "low" | "medium" | "high";
   done?: boolean;
   archived?: boolean;
 };
