@@ -378,6 +378,13 @@ export default function TaskList() {
         closeMenuTimeout.current = null;
       }
     };
+    const clearHoveredAction = (action?: "complete" | "delete") => {
+      setHoveredAction((current) => {
+        if (!current || current.id !== t.id) return current;
+        if (action && current.action !== action) return current;
+        return null;
+      });
+    };
     const scheduleCloseMenu = () => {
       clearCloseTimer();
       closeMenuTimeout.current = window.setTimeout(() => {
@@ -494,7 +501,11 @@ export default function TaskList() {
                   clearCloseTimer();
                   setActionMenuId(t.id);
                 }}
-                onMouseLeave={scheduleCloseMenu}
+                onMouseLeave={() => {
+                  clearHoveredAction();
+                  scheduleCloseMenu();
+                }}
+                onBlur={() => clearHoveredAction()}
               >
                 <button
                   type="button"
@@ -502,7 +513,9 @@ export default function TaskList() {
                     isConfirmingComplete ? "text-emerald-600" : "text-slate-600"
                   } ${isConfirmingAny && !isConfirmingComplete ? "opacity-50" : ""}`}
                   onMouseEnter={() => setHoveredAction({ id: t.id, action: "complete" })}
+                  onMouseLeave={() => clearHoveredAction("complete")}
                   onFocus={() => setHoveredAction({ id: t.id, action: "complete" })}
+                  onBlur={() => clearHoveredAction("complete")}
                   onClick={() => {
                     if (!isConfirmingComplete) return;
                     if (isPending) {
@@ -520,7 +533,9 @@ export default function TaskList() {
                     isConfirmingDelete ? "text-red-600" : "text-slate-600"
                   } ${isConfirmingAny && !isConfirmingDelete ? "opacity-50" : ""}`}
                   onMouseEnter={() => setHoveredAction({ id: t.id, action: "delete" })}
+                  onMouseLeave={() => clearHoveredAction("delete")}
                   onFocus={() => setHoveredAction({ id: t.id, action: "delete" })}
+                  onBlur={() => clearHoveredAction("delete")}
                   onClick={() => {
                     if (!isConfirmingDelete) return;
                     void archiveTask(t);
