@@ -376,10 +376,10 @@ export default function TaskList() {
                   <Check className="w-4 h-4 opacity-50" />
                 </button>
                 <div
-                  className={`absolute left-12 top-1/2 flex items-center gap-2 whitespace-nowrap transition-[opacity,transform] duration-300 -translate-y-1/2 ${
+                  className={`absolute left-11 flex items-center gap-0 whitespace-nowrap transition-[opacity,transform] duration-300 ${
                     isHoveringComplete
                       ? "opacity-100 translate-x-0 pointer-events-auto"
-                      : "opacity-0 translate-x-2 pointer-events-none"
+                      : "opacity-0 translate-x-0 pointer-events-none"
                   }`}
                 >
                   <span className="text-xs text-slate-500 whitespace-nowrap">已完成？</span>
@@ -404,7 +404,7 @@ export default function TaskList() {
           </div>
           <div
             className={`flex min-w-0 flex-1 items-start justify-between gap-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/50 px-4 py-3 shadow-sm transition-transform duration-300 ${
-              isHoveringComplete ? "translate-x-6" : "translate-x-0"
+              isHoveringComplete ? "translate-x-20" : "translate-x-0"
             }`}
           >
             <div className="min-w-0 flex-1 space-y-1">
