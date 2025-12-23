@@ -1,5 +1,5 @@
 ﻿"use client";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -19,7 +19,7 @@ import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
 import { pushOffline } from "@/utils/mergeOffline";
 import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
-import { Check, Plus, Tag as TagIcon, X, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Check, Plus, Tag as TagIcon, X, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import TagManager from "./TagManager";
 
 const TAG_COLLECTION = (uid: string) => collection(db, "users", uid, "tags");
@@ -47,6 +47,7 @@ export default function TaskList() {
   const [tasksReady, setTasksReady] = useState(false);
   const [leavingIds, setLeavingIds] = useState<Record<string, boolean>>({});
   const [hoveredCompleteId, setHoveredCompleteId] = useState<string | null>(null);
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let unsubTasks: (() => void) | null = null;
@@ -167,6 +168,15 @@ export default function TaskList() {
 
     void normalizeTasks();
   }, [rawTasks, tags, uid, setArchivedTasks, setTasks]);
+
+  useEffect(() => {
+    if (!editingId) return;
+    const frame = window.requestAnimationFrame(() => {
+      editingInputRef.current?.focus();
+      editingInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingId]);
 
   const setActiveTask = async (id: string) => {
     setTimer({ activeTaskId: id });
@@ -424,24 +434,25 @@ export default function TaskList() {
               {editingId === t.id ? (
                 <div className="flex gap-2 items-center">
                   <input
+                    ref={editingInputRef}
                     className="flex-1 rounded border px-2 py-1 bg-transparent"
                     value={editingName}
                     onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => void saveName(t)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void saveName(t);
                     }}
                   />
-                  <button className="px-3 py-1 rounded border" onClick={() => void saveName(t)}>
-                    保存
-                  </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <div className="font-medium truncate" title={t.name}>
+                  <button
+                    type="button"
+                    className="font-medium truncate text-left"
+                    title={t.name}
+                    onClick={() => startEditing(t)}
+                  >
                     {t.name}
-                  </div>
-                  <button className="text-xs underline" onClick={() => startEditing(t)}>
-                    <Pencil className="w-4 h-4" />
                   </button>
                 </div>
               )}
