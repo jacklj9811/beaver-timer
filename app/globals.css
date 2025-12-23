@@ -17,3 +17,22 @@ body {
 .container-page {
   @apply max-w-5xl mx-auto px-4 sm:px-6 lg:px-8;
 }
+
+@keyframes task-name-ticker {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.task-name-ticker-container:hover .task-name-ticker {
+  animation: task-name-ticker 6s linear infinite;
+}
+
+.task-name-ticker {
+  display: inline-block;
+  padding-right: 1ch;
+  will-change: transform;
+}

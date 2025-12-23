@@ -446,6 +446,16 @@ export default function TaskList() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
+                  <div
+                    className={`font-medium w-[12ch] max-w-[12ch] overflow-hidden whitespace-nowrap ${
+                      t.name.length > 12 ? "task-name-ticker-container" : ""
+                    }`}
+                    title={t.name}
+                  >
+                    <span className={t.name.length > 12 ? "task-name-ticker" : undefined}>
+                      {t.name}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     className="font-medium truncate text-left"
