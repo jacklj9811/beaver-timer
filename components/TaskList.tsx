@@ -52,7 +52,7 @@ export default function TaskList() {
     action: "complete" | "delete";
   } | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
-  const closeMenuTimeout = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const closeMenuTimeout = useRef<number | null>(null);
 
   useEffect(() => {
     let unsubTasks: (() => void) | null = null;
