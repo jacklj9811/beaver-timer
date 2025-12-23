@@ -9,6 +9,7 @@ import {
   where,
   orderBy,
   updateDoc,
+  type SnapshotMetadata,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -38,12 +39,19 @@ export async function upsertTask(uid: string, taskId: string | null, data: any) 
   }
 }
 
-export async function writeSession(uid: string, payload: any) {
-  await addDoc(sessionsCollection, {
+export async function writeSession(
+  uid: string,
+  payload: any,
+  options: { opId?: string; sessionId?: string } = {}
+) {
+  const ref = options.sessionId ? doc(sessionsCollection, options.sessionId) : doc(sessionsCollection);
+  await setDoc(ref, {
     ...payload,
     user_uid: uid,
     ts: serverTimestamp(),
+    opId: options.opId ?? null,
   });
+  return ref.id;
 }
 
 export function listenTodaySessions(uid: string, onData: (docs: any[]) => void) {
@@ -58,12 +66,19 @@ export function listenTodaySessions(uid: string, onData: (docs: any[]) => void) 
   return onSnapshot(q, (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 }
 
-export async function updatePresence(uid: string, state: any) {
-  await setDoc(presenceDoc(uid), { ...state, updatedAt: serverTimestamp() }, { merge: true });
+export async function updatePresence(uid: string, state: any, opId?: string) {
+  await setDoc(
+    presenceDoc(uid),
+    { ...state, lastOpId: opId ?? state.lastOpId ?? null, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
 }
 
-export function listenPresence(uid: string, onChange: (s: any) => void) {
-  return onSnapshot(presenceDoc(uid), (snap) => {
-    if (snap.exists()) onChange(snap.data());
+export function listenPresence(
+  uid: string,
+  onChange: (s: any, metadata: SnapshotMetadata) => void
+) {
+  return onSnapshot(presenceDoc(uid), { includeMetadataChanges: true }, (snap) => {
+    if (snap.exists()) onChange(snap.data(), snap.metadata);
   });
 }

@@ -11,13 +11,14 @@ import {
   getDocs,
   query,
   where,
-  deleteDoc,
   setDoc,
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useStore, Task, Tag } from "@/store/useStore";
-import { pushOffline } from "@/utils/mergeOffline";
+import { addPendingOp, removePendingOps } from "@/utils/mergeOffline";
+import { usePendingOps } from "@/hooks/usePendingOps";
 import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
 import { Plus, Tag as TagIcon, X, ChevronDown, ChevronUp } from "lucide-react";
 import TagManager from "./TagManager";
@@ -37,6 +38,8 @@ export default function TaskList() {
 
   const [uid, setUid] = useState<string | null>(null);
   const [rawTasks, setRawTasks] = useState<Task[]>([]);
+  const [serverTasks, setServerTasks] = useState<Task[]>([]);
+  const [serverArchivedTasks, setServerArchivedTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,6 +56,7 @@ export default function TaskList() {
   } | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
   const closeMenuTimeout = useRef<number | null>(null);
+  const pendingOps = usePendingOps();
 
   useEffect(() => {
     let unsubTasks: (() => void) | null = null;
@@ -62,6 +66,8 @@ export default function TaskList() {
       setUid(u?.uid ?? null);
       setTasks([]);
       setArchivedTasks([]);
+      setServerTasks([]);
+      setServerArchivedTasks([]);
       setTags([]);
       setTagsReady(false);
       setTasksReady(false);
@@ -79,18 +85,28 @@ export default function TaskList() {
       const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
       const tagsCol = TAG_COLLECTION(u.uid);
 
-      unsubTasks = onSnapshot(tasksQuery, (snap) => {
-        const list = snap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-            name: data.name ?? "",
-            tagIds: data.tagIds ?? data.tags ?? [],
-            priority: data.priority ?? "medium",
-            done: data.done ?? false,
-            archived: data.archived ?? false,
-          } satisfies Task;
-        });
+      unsubTasks = onSnapshot(tasksQuery, { includeMetadataChanges: true }, (snap) => {
+        const confirmedOpIds = snap.docs
+          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+          .flatMap((docSnap) => {
+            const data = docSnap.data() as any;
+            return [data.createdOpId, data.lastOpId].filter(Boolean);
+          });
+        removePendingOps(confirmedOpIds);
+
+        const list = snap.docs
+          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+          .map((d) => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              name: data.name ?? "",
+              tagIds: data.tagIds ?? data.tags ?? [],
+              priority: data.priority ?? "medium",
+              done: data.done ?? false,
+              archived: data.archived ?? false,
+            } satisfies Task;
+          });
         setRawTasks(list);
         setTasksReady(true);
       });
@@ -144,7 +160,7 @@ export default function TaskList() {
             continue;
           }
 
-          const newTagRef = await addDoc(TAG_COLLECTION(uid), { name: value, createdAt: new Date() });
+          const newTagRef = await addDoc(TAG_COLLECTION(uid), { name: value, createdAt: serverTimestamp() });
           const newTag: Tag = { id: newTagRef.id, name: value };
           tagById.set(newTag.id, newTag);
           tagByName.set(newTag.name.toLowerCase(), newTag);
@@ -161,18 +177,84 @@ export default function TaskList() {
         else active.push(normalizedTask);
 
         if (needsUpdate) {
+          const opId = addPendingOp({
+            type: "task",
+            payload: { action: "update", id: task.id, data: { tagIds: dedupedTagIds } },
+          });
           await updateDoc(doc(db, "tasks", task.id), {
             tagIds: dedupedTagIds,
+            updatedAt: serverTimestamp(),
+            lastOpId: opId,
           });
         }
       }
 
-      setTasks(active);
-      setArchivedTasks(archived);
+      setServerTasks(active);
+      setServerArchivedTasks(archived);
     };
 
     void normalizeTasks();
-  }, [rawTasks, tags, uid, setArchivedTasks, setTasks]);
+  }, [rawTasks, tags, uid]);
+
+  const pendingTaskOps = useMemo(() => pendingOps.filter((op) => op.type === "task"), [pendingOps]);
+
+  const mergedTaskState = useMemo(() => {
+    const taskById = new Map<string, Task>();
+    serverTasks.forEach((t) => taskById.set(t.id, t));
+    serverArchivedTasks.forEach((t) => taskById.set(t.id, t));
+
+    const pendingIds = new Set<string>();
+
+    pendingTaskOps.forEach((op) => {
+      const payload = op.payload as {
+        action?: "add" | "update";
+        id?: string;
+        data?: Partial<Task>;
+      } & Partial<Task>;
+      if (!payload?.id) return;
+      const id = payload.id;
+      pendingIds.add(id);
+
+      if (payload.action === "add") {
+        const existing = taskById.get(id);
+        const nextTask: Task = {
+          id,
+          name: payload.name ?? existing?.name ?? "",
+          tagIds: payload.tagIds ?? existing?.tagIds ?? [],
+          priority: payload.priority ?? existing?.priority ?? "medium",
+          done: payload.done ?? existing?.done ?? false,
+          archived: payload.archived ?? existing?.archived ?? false,
+        };
+        taskById.set(id, nextTask);
+        return;
+      }
+
+      if (payload.action === "update") {
+        const existing: Task = taskById.get(id) ?? {
+          id,
+          name: payload.name ?? "",
+          tagIds: payload.tagIds ?? [],
+          priority: payload.priority ?? "medium",
+          done: payload.done ?? false,
+          archived: payload.archived ?? false,
+        };
+        const updates = payload.data ?? {};
+        taskById.set(id, { ...existing, ...updates });
+      }
+    });
+
+    const merged = Array.from(taskById.values());
+    return {
+      active: merged.filter((t) => !t.archived),
+      archived: merged.filter((t) => t.archived),
+      pendingIds,
+    };
+  }, [pendingTaskOps, serverArchivedTasks, serverTasks]);
+
+  useEffect(() => {
+    setTasks(mergedTaskState.active);
+    setArchivedTasks(mergedTaskState.archived);
+  }, [mergedTaskState, setArchivedTasks, setTasks]);
 
   useEffect(() => {
     if (!editingId) return;
@@ -187,11 +269,8 @@ export default function TaskList() {
     setTimer({ activeTaskId: id });
     if (!uid) return;
     const state = useStore.getState().timer;
-    try {
-      await updatePresence(uid, state);
-    } catch {
-      pushOffline({ type: "presence", payload: state });
-    }
+    const opId = addPendingOp({ type: "presence", payload: state, opKey: `presence:${uid}` });
+    updatePresence(uid, state, opId).catch(() => {});
   };
 
   const create = async () => {
@@ -209,10 +288,15 @@ export default function TaskList() {
     if (historical) {
       const reuse = window.confirm(`检测到你曾创建过任务“${name}”，是否继承历史统计数据？`);
       if (reuse) {
+        const opId = addPendingOp({
+          type: "task",
+          payload: { action: "update", id: historical.id, data: { archived: false, done: false } },
+        });
         await updateDoc(doc(db, "tasks", historical.id), {
           archived: false,
           done: false,
-          updatedAt: new Date(),
+          updatedAt: serverTimestamp(),
+          lastOpId: opId,
         });
         setInput("");
         return;
@@ -228,21 +312,35 @@ export default function TaskList() {
           where("taskId", "==", historical.id)
         );
         const snap = await getDocs(sessionsQuery);
-        await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+        const batch = writeBatch(db);
+        snap.docs.forEach((d) => batch.delete(d.ref));
 
-        const payload = {
+        const opId = addPendingOp({
+          type: "task",
+          payload: {
+            action: "update",
+            id: historical.id,
+            data: {
+              name,
+              tagIds: [],
+              priority: "medium",
+              done: false,
+              archived: false,
+            },
+          },
+        });
+        batch.set(doc(db, "tasks", historical.id), {
           name,
           tagIds: [],
           priority: "medium" as const,
           done: false,
           archived: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        await setDoc(doc(db, "tasks", historical.id), {
-          ...payload,
           user_uid: uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          lastOpId: opId,
         });
+        await batch.commit();
         setInput("");
         return;
       } catch (e) {
@@ -258,39 +356,51 @@ export default function TaskList() {
       priority: "medium" as const,
       done: false,
       archived: false,
-      createdAt: new Date(),
     };
 
+    const taskRef = doc(tasksCollection);
+    const opId = addPendingOp({
+      type: "task",
+      payload: { action: "add", id: taskRef.id, ...payload },
+    });
     try {
-      await addDoc(tasksCollection, {
+      await setDoc(taskRef, {
         ...payload,
         user_uid: uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdOpId: opId,
+        lastOpId: opId,
       });
       setInput("");
     } catch {
-      pushOffline({
-        type: "task",
-        payload: { action: "add", ...payload, user_uid: uid },
-      });
+      // 失败时保留 pending，等待稍后同步
     }
   };
 
   const toggleDone = async (id: string, done: boolean) => {
     if (!uid) return;
-    try {
-      await updateDoc(doc(db, "tasks", id), { done: !done, updatedAt: new Date() });
-    } catch {
-      pushOffline({ type: "task", payload: { action: "update", id, done: !done } });
-    }
+    const opId = addPendingOp({
+      type: "task",
+      payload: { action: "update", id, data: { done: !done } },
+    });
+    updateDoc(doc(db, "tasks", id), { done: !done, updatedAt: serverTimestamp(), lastOpId: opId }).catch(
+      () => {}
+    );
   };
 
   const archiveTask = async (task: Task) => {
     if (!uid) return;
     const confirmed = window.confirm(`确认删除任务“${task.name}”？此操作会保留历史统计`);
     if (!confirmed) return;
+    const opId = addPendingOp({
+      type: "task",
+      payload: { action: "update", id: task.id, data: { archived: true } },
+    });
     await updateDoc(doc(db, "tasks", task.id), {
       archived: true,
-      archivedAt: new Date(),
+      archivedAt: serverTimestamp(),
+      lastOpId: opId,
     });
   };
 
@@ -307,7 +417,11 @@ export default function TaskList() {
       setError("当前列表已存在同名任务，无法创建");
       return;
     }
-    await updateDoc(doc(db, "tasks", task.id), { name, updatedAt: new Date() });
+    const opId = addPendingOp({
+      type: "task",
+      payload: { action: "update", id: task.id, data: { name } },
+    });
+    await updateDoc(doc(db, "tasks", task.id), { name, updatedAt: serverTimestamp(), lastOpId: opId });
     setEditingId(null);
     setEditingName("");
   };
@@ -315,7 +429,15 @@ export default function TaskList() {
   const removeTagFromTask = async (task: Task, tagId: string) => {
     if (!uid) return;
     const next = (task.tagIds || []).filter((id) => id !== tagId);
-    await updateDoc(doc(db, "tasks", task.id), { tagIds: next, updatedAt: new Date() });
+    const opId = addPendingOp({
+      type: "task",
+      payload: { action: "update", id: task.id, data: { tagIds: next } },
+    });
+    await updateDoc(doc(db, "tasks", task.id), {
+      tagIds: next,
+      updatedAt: serverTimestamp(),
+      lastOpId: opId,
+    });
   };
 
   const addTagToTask = async (task: Task, value: string) => {
@@ -325,12 +447,20 @@ export default function TaskList() {
 
     let tag = tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
     if (!tag) {
-      const ref = await addDoc(TAG_COLLECTION(uid), { name, createdAt: new Date() });
+      const ref = await addDoc(TAG_COLLECTION(uid), { name, createdAt: serverTimestamp() });
       tag = { id: ref.id, name };
     }
 
     const next = Array.from(new Set([...(task.tagIds || []), tag.id]));
-    await updateDoc(doc(db, "tasks", task.id), { tagIds: next, updatedAt: new Date() });
+    const opId = addPendingOp({
+      type: "task",
+      payload: { action: "update", id: task.id, data: { tagIds: next } },
+    });
+    await updateDoc(doc(db, "tasks", task.id), {
+      tagIds: next,
+      updatedAt: serverTimestamp(),
+      lastOpId: opId,
+    });
     setTagInputs((prev) => ({ ...prev, [task.id]: "" }));
   };
 
@@ -339,6 +469,8 @@ export default function TaskList() {
     tags.forEach((t) => map.set(t.id, t.name));
     return map;
   }, [tags]);
+
+  const pendingTaskIds = mergedTaskState.pendingIds;
 
   const pendingTasks = useMemo(() => tasks.filter((t) => !t.done), [tasks]);
   const completedTasks = useMemo(() => tasks.filter((t) => t.done), [tasks]);
@@ -370,6 +502,7 @@ export default function TaskList() {
     const isConfirmingComplete = hoveredAction?.id === t.id && hoveredAction.action === "complete";
     const isConfirmingDelete = hoveredAction?.id === t.id && hoveredAction.action === "delete";
     const isConfirmingAny = hoveredAction?.id === t.id;
+    const isSyncPending = pendingTaskIds.has(t.id);
     const completeLabel = isPending ? "完成" : "恢复";
     const confirmLabel = isPending ? "已完成？" : "恢复？";
     const clearCloseTimer = () => {
@@ -429,6 +562,11 @@ export default function TaskList() {
                     {t.name}
                   </span>
                 </button>
+                {isSyncPending ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">
+                    同步中
+                  </span>
+                ) : null}
               </div>
             )}
 
@@ -623,17 +761,24 @@ export default function TaskList() {
         open={showTagManager}
         onClose={() => setShowTagManager(false)}
         uid={uid}
-        onRemoveTagFromTasks={async (tagId) => {
+        onDeleteTag={async (tagId) => {
           if (!uid) return;
           const affected = [...tasks, ...archivedTasks].filter((t) => t.tagIds?.includes(tagId));
-          await Promise.all(
-            affected.map((t) =>
-              updateDoc(doc(db, "tasks", t.id), {
-                tagIds: (t.tagIds || []).filter((id) => id !== tagId),
-                updatedAt: new Date(),
-              })
-            )
-          );
+          const batch = writeBatch(db);
+          affected.forEach((t) => {
+            const nextTagIds = (t.tagIds || []).filter((id) => id !== tagId);
+            const opId = addPendingOp({
+              type: "task",
+              payload: { action: "update", id: t.id, data: { tagIds: nextTagIds } },
+            });
+            batch.update(doc(db, "tasks", t.id), {
+              tagIds: nextTagIds,
+              updatedAt: serverTimestamp(),
+              lastOpId: opId,
+            });
+          });
+          batch.delete(doc(db, "users", uid, "tags", tagId));
+          await batch.commit();
         }}
       />
     </div>

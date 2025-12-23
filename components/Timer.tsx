@@ -5,7 +5,7 @@ import { useTimer } from "@/hooks/useTimer";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { listenPresence, updatePresence } from "@/lib/firestore";
-import { pushOffline } from "@/utils/mergeOffline";
+import { addPendingOp, removePendingOps } from "@/utils/mergeOffline";
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60).toString().padStart(2, "0");
@@ -43,7 +43,10 @@ export default function Timer() {
   // 多设备同步 presence
   useEffect(() => {
     if (!uid) return;
-    const unsub = listenPresence(uid, (remote) => {
+    const unsub = listenPresence(uid, (remote, metadata) => {
+      if (remote?.lastOpId && !metadata.hasPendingWrites) {
+        removePendingOps([remote.lastOpId]);
+      }
       if (remote && typeof remote.secondsLeft === "number") {
         const local = useStore.getState().timer;
         const remoteMode = (remote.mode as "focus" | "break") ?? local.mode;
@@ -77,43 +80,33 @@ export default function Timer() {
   const start = async () => {
     setTimer({ isRunning: true });
     if (uid) {
-      try {
-        await updatePresence(uid, { ...timer, isRunning: true });
-      } catch {
-        pushOffline({
-          type: "presence",
-          payload: { ...timer, isRunning: true },
-        });
-      }
+      const opId = addPendingOp({
+        type: "presence",
+        payload: { ...timer, isRunning: true },
+        opKey: `presence:${uid}`,
+      });
+      updatePresence(uid, { ...timer, isRunning: true }, opId).catch(() => {});
     }
   };
 
   const pause = async () => {
     setTimer({ isRunning: false });
     if (uid) {
-      try {
-        await updatePresence(uid, { ...timer, isRunning: false });
-      } catch {
-        pushOffline({
-          type: "presence",
-          payload: { ...timer, isRunning: false },
-        });
-      }
+      const opId = addPendingOp({
+        type: "presence",
+        payload: { ...timer, isRunning: false },
+        opKey: `presence:${uid}`,
+      });
+      updatePresence(uid, { ...timer, isRunning: false }, opId).catch(() => {});
     }
   };
 
   const reset = async () => {
     resetTimer(); // 重置为当前模式的默认值
     if (uid) {
-      try {
-        const t = useStore.getState().timer;
-        await updatePresence(uid, t);
-      } catch {
-        pushOffline({
-          type: "presence",
-          payload: useStore.getState().timer,
-        });
-      }
+      const t = useStore.getState().timer;
+      const opId = addPendingOp({ type: "presence", payload: t, opKey: `presence:${uid}` });
+      updatePresence(uid, t, opId).catch(() => {});
     }
   };
 
