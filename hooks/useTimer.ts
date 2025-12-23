@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { useStore } from "@/store/useStore";
-import { updatePresence, writeSession } from "@/lib/firestore";
-import { pushOffline } from "@/utils/mergeOffline";
+import { doc } from "firebase/firestore";
+import { sessionsCollection, updatePresence, writeSession } from "@/lib/firestore";
+import { addPendingOp } from "@/utils/mergeOffline";
 
 type Opts = {
   uid?: string | null;
@@ -60,9 +61,12 @@ export function useTimer(opts: Opts = {}) {
             activeTaskId: current.activeTaskId ?? null,
             roundTotalSec,
           };
-          updatePresence(uid, presenceState).catch(() => {
-            pushOffline({ type: "presence", payload: presenceState });
+          const opId = addPendingOp({
+            type: "presence",
+            payload: presenceState,
+            opKey: `presence:${uid}`,
           });
+          updatePresence(uid, presenceState, opId).catch(() => {});
         }
 
         // 🔔 完成一个番茄
@@ -80,17 +84,14 @@ export function useTimer(opts: Opts = {}) {
             taskId: finalTimer.activeTaskId ?? null,
           };
 
-        const offlinePayload = {
-          ...payload,
-          user_uid: uid ?? null,
-        };
-
-        if (uid) {
-          writeSession(uid, payload).catch(() => {
-            pushOffline({ type: "session", payload: offlinePayload });
+          const sessionId = uid ? doc(sessionsCollection).id : undefined;
+          const opId = addPendingOp({
+            type: "session",
+            payload: { id: sessionId, ...payload, user_uid: uid ?? null },
           });
-        } else {
-            pushOffline({ type: "session", payload: offlinePayload });
+
+          if (uid && sessionId) {
+            writeSession(uid, payload, { opId, sessionId }).catch(() => {});
           }
 
           // 自动切换模式 + 重置时间（resetTimer 会把 isRunning 设为 false）
@@ -100,9 +101,12 @@ export function useTimer(opts: Opts = {}) {
           // 切换模式之后，再同步一次 presence（确保远端拿到“下一轮”的状态）
           if (uid) {
             const nextState = useStore.getState().timer;
-            updatePresence(uid, nextState).catch(() => {
-              pushOffline({ type: "presence", payload: nextState });
+            const nextOpId = addPendingOp({
+              type: "presence",
+              payload: nextState,
+              opKey: `presence:${uid}`,
             });
+            updatePresence(uid, nextState, nextOpId).catch(() => {});
           }
 
           // 震动 / 通知

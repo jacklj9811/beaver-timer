@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useStore } from "@/store/useStore";
 import { Trash2 } from "lucide-react";
@@ -9,10 +9,10 @@ interface Props {
   open: boolean;
   onClose: () => void;
   uid: string | null;
-  onRemoveTagFromTasks: (tagId: string) => Promise<void>;
+  onDeleteTag: (tagId: string) => Promise<void>;
 }
 
-export default function TagManager({ open, onClose, uid, onRemoveTagFromTasks }: Props) {
+export default function TagManager({ open, onClose, uid, onDeleteTag }: Props) {
   const tags = useStore((s) => s.tags);
   const [input, setInput] = useState("");
   const [editing, setEditing] = useState<Record<string, string>>({});
@@ -29,7 +29,7 @@ export default function TagManager({ open, onClose, uid, onRemoveTagFromTasks }:
       return;
     }
     setError(null);
-    await addDoc(collection(db, "users", uid, "tags"), { name, createdAt: new Date() });
+    await addDoc(collection(db, "users", uid, "tags"), { name, createdAt: serverTimestamp() });
     setInput("");
   };
 
@@ -42,7 +42,7 @@ export default function TagManager({ open, onClose, uid, onRemoveTagFromTasks }:
       return;
     }
     setError(null);
-    await updateDoc(doc(db, "users", uid, "tags", tagId), { name, updatedAt: new Date() });
+    await updateDoc(doc(db, "users", uid, "tags", tagId), { name, updatedAt: serverTimestamp() });
     setEditing((prev) => {
       const next = { ...prev };
       delete next[tagId];
@@ -54,8 +54,7 @@ export default function TagManager({ open, onClose, uid, onRemoveTagFromTasks }:
     if (!uid) return;
     const confirmed = window.confirm(`确认删除标签「${tagName}」？相关任务会解除关联`);
     if (!confirmed) return;
-    await onRemoveTagFromTasks(tagId);
-    await deleteDoc(doc(db, "users", uid, "tags", tagId));
+    await onDeleteTag(tagId);
   };
 
   return (

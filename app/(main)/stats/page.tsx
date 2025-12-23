@@ -5,6 +5,8 @@ import { onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { format, startOfWeek, addDays, isSameDay } from "date-fns";
 import { sessionsCollection, tasksCollection } from "@/lib/firestore";
+import { usePendingOps } from "@/hooks/usePendingOps";
+import { removePendingOps } from "@/utils/mergeOffline";
 
 type Session = { id: string; date: string; mode: "focus" | "break"; durationSec: number; taskId?: string | null };
 type Task = { id: string; name?: string | null };
@@ -12,6 +14,7 @@ type Task = { id: string; name?: string | null };
 export default function StatsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const pendingOps = usePendingOps();
 
   useEffect(() => {
     let unsubSessions: (() => void) | null = null;
@@ -33,13 +36,33 @@ export default function StatsPage() {
         where("date", ">=", "1970-01-01"),
         orderBy("date", "asc")
       );
-      unsubSessions = onSnapshot(sessionsQuery, (snap) => {
-        setSessions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+      unsubSessions = onSnapshot(sessionsQuery, { includeMetadataChanges: true }, (snap) => {
+        const confirmedOpIds = snap.docs
+          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+          .map((docSnap) => (docSnap.data() as any).opId)
+          .filter(Boolean);
+        removePendingOps(confirmedOpIds);
+        setSessions(
+          snap.docs
+            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        );
       });
 
       const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
-      unsubTasks = onSnapshot(tasksQuery, (snap) => {
-        setTasks(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+      unsubTasks = onSnapshot(tasksQuery, { includeMetadataChanges: true }, (snap) => {
+        const confirmedOpIds = snap.docs
+          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+          .flatMap((docSnap) => {
+            const data = docSnap.data() as any;
+            return [data.createdOpId, data.lastOpId].filter(Boolean);
+          });
+        removePendingOps(confirmedOpIds);
+        setTasks(
+          snap.docs
+            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+            .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        );
       });
     });
 
@@ -50,14 +73,60 @@ export default function StatsPage() {
     };
   }, []);
 
+  const pendingSessions = useMemo(
+    () =>
+      pendingOps
+        .filter((op) => op.type === "session")
+        .map((op) => {
+          const payload = op.payload as Partial<Session>;
+          return {
+            id: payload.id ?? op.opId,
+            date: payload.date ?? new Date().toISOString().slice(0, 10),
+            mode: (payload.mode ?? "focus") as "focus" | "break",
+            durationSec: payload.durationSec ?? 0,
+            taskId: payload.taskId ?? null,
+          } satisfies Session;
+        }),
+    [pendingOps]
+  );
+
+  const pendingTaskOps = useMemo(() => pendingOps.filter((op) => op.type === "task"), [pendingOps]);
+
+  const sessionsForStats = useMemo(() => {
+    const map = new Map(sessions.map((s) => [s.id, s]));
+    pendingSessions.forEach((s) => map.set(s.id, s));
+    return Array.from(map.values());
+  }, [pendingSessions, sessions]);
+
+  const tasksForStats = useMemo(() => {
+    const map = new Map(tasks.map((t) => [t.id, t]));
+    pendingTaskOps.forEach((op) => {
+      const payload = op.payload as {
+        action?: "add" | "update";
+        id?: string;
+        data?: Partial<Task>;
+      } & Partial<Task>;
+      if (!payload?.id) return;
+      const existing = map.get(payload.id) ?? { id: payload.id };
+      if (payload.action === "add") {
+        map.set(payload.id, { ...existing, ...payload });
+        return;
+      }
+      if (payload.action === "update") {
+        map.set(payload.id, { ...existing, ...(payload.data ?? {}) });
+      }
+    });
+    return Array.from(map.values());
+  }, [pendingTaskOps, tasks]);
+
   const todayFocusMin = useMemo(() => {
     const today = new Date();
     return Math.round(
-      sessions
+      sessionsForStats
         .filter((s) => s.mode === "focus" && isSameDay(new Date(s.date), today))
         .reduce((acc, s) => acc + s.durationSec, 0) / 60
     );
-  }, [sessions]);
+  }, [sessionsForStats]);
 
   const weekData = useMemo(() => {
     const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // week starts Monday
@@ -65,32 +134,32 @@ export default function StatsPage() {
       const d = addDays(start, i);
       const label = format(d, "EEE");
       const min = Math.round(
-        sessions
+        sessionsForStats
           .filter((s) => s.mode === "focus" && isSameDay(new Date(s.date), d))
           .reduce((acc, s) => acc + s.durationSec, 0) / 60
       );
       return { label, min };
     });
     return arr;
-  }, [sessions]);
+  }, [sessionsForStats]);
 
   const finishedRate = useMemo(() => {
-    const focusCnt = sessions.filter((s) => s.mode === "focus").length;
-    const total = sessions.length || 1;
+    const focusCnt = sessionsForStats.filter((s) => s.mode === "focus").length;
+    const total = sessionsForStats.length || 1;
     return Math.round((focusCnt / total) * 100);
-  }, [sessions]);
+  }, [sessionsForStats]);
 
   const taskNameById = useMemo(() => {
-    return tasks.reduce((acc, t) => {
+    return tasksForStats.reduce((acc, t) => {
       acc[t.id] = t.name ?? "未分配任务";
       return acc;
     }, {} as Record<string, string>);
-  }, [tasks]);
+  }, [tasksForStats]);
 
   const taskTotals = useMemo(() => {
     const totals: Record<string, { name: string; seconds: number }> = {};
 
-    sessions.forEach((s) => {
+    sessionsForStats.forEach((s) => {
       if (s.mode !== "focus") return;
       const key = s.taskId ?? "__none__";
       const name = (s.taskId && taskNameById[s.taskId]) || "未分配任务";
@@ -101,7 +170,7 @@ export default function StatsPage() {
     return Object.entries(totals)
       .map(([id, data]) => ({ id, name: data.name, min: Math.round(data.seconds / 60) }))
       .sort((a, b) => b.min - a.min);
-  }, [sessions, taskNameById]);
+  }, [sessionsForStats, taskNameById]);
 
   return (
     <div className="space-y-6">
