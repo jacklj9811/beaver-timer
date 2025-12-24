@@ -1,4 +1,5 @@
 import "./globals.css";
+import PendingSyncer from "@/components/PendingSyncer";
 
 export const metadata = {
   title: "海狸时钟 Beaver Timer",
@@ -12,7 +13,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh">
-      <body>{children}</body>
+      <body>
+        <PendingSyncer />
+        {children}
+      </body>
     </html>
   );
 }
