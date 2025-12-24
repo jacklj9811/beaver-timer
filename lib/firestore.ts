@@ -44,9 +44,12 @@ export async function writeSession(
   payload: any,
   options: { opId?: string; sessionId?: string } = {}
 ) {
+  const dateKey = payload?.dateKey ?? payload?.date ?? new Date().toISOString().slice(0, 10);
   const ref = options.sessionId ? doc(sessionsCollection, options.sessionId) : doc(sessionsCollection);
   await setDoc(ref, {
     ...payload,
+    date: dateKey,
+    dateKey,
     user_uid: uid,
     ts: serverTimestamp(),
     opId: options.opId ?? null,
@@ -57,10 +60,13 @@ export async function writeSession(
 export function listenTodaySessions(uid: string, onData: (docs: any[]) => void) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
   const q = query(
     sessionsCollection,
     where("user_uid", "==", uid),
-    where("date", "==", start.toISOString().slice(0, 10)),
+    where("ts", ">=", start),
+    where("ts", "<", end),
     orderBy("ts", "asc")
   );
   return onSnapshot(q, (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));

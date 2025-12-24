@@ -77,8 +77,10 @@ export function useTimer(opts: Opts = {}) {
             finalTimer.roundTotalSec ??
             ((finalTimer.mode === "focus" ? finalTimer.defaultFocusMin : finalTimer.defaultBreakMin) * 60);
 
+          const dateKey = new Date().toISOString().slice(0, 10);
           const payload = {
-            date: new Date().toISOString().slice(0, 10),
+            date: dateKey,
+            dateKey,
             mode: finalTimer.mode,
             durationSec: sessionDurationSec,
             taskId: finalTimer.activeTaskId ?? null,
