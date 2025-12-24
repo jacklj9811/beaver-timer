@@ -8,8 +8,25 @@ import { sessionsCollection, tasksCollection } from "@/lib/firestore";
 import { usePendingOps } from "@/hooks/usePendingOps";
 import { removePendingOps } from "@/utils/mergeOffline";
 
-type Session = { id: string; date: string; mode: "focus" | "break"; durationSec: number; taskId?: string | null };
+type Session = {
+  id: string;
+  date?: string;
+  dateKey?: string;
+  ts?: any;
+  mode: "focus" | "break";
+  durationSec: number;
+  taskId?: string | null;
+};
 type Task = { id: string; name?: string | null };
+
+const getSessionDate = (s: Session) => {
+  if (s.dateKey) return new Date(s.dateKey);
+  if (s.date) return new Date(s.date);
+  if (s.ts?.toDate) return s.ts.toDate();
+  if (typeof s.ts === "number") return new Date(s.ts);
+  if (s.ts?.seconds) return new Date(s.ts.seconds * 1000);
+  return null;
+};
 
 export default function StatsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -30,12 +47,7 @@ export default function StatsPage() {
         return;
       }
 
-      const sessionsQuery = query(
-        sessionsCollection,
-        where("user_uid", "==", u.uid),
-        where("date", ">=", "1970-01-01"),
-        orderBy("date", "asc")
-      );
+      const sessionsQuery = query(sessionsCollection, where("user_uid", "==", u.uid), orderBy("ts", "asc"));
       unsubSessions = onSnapshot(sessionsQuery, { includeMetadataChanges: true }, (snap) => {
         const confirmedOpIds = snap.docs
           .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
@@ -79,9 +91,11 @@ export default function StatsPage() {
         .filter((op) => op.type === "session")
         .map((op) => {
           const payload = op.payload as Partial<Session>;
+          const dateKey = payload.dateKey ?? payload.date ?? new Date().toISOString().slice(0, 10);
           return {
             id: payload.id ?? op.opId,
-            date: payload.date ?? new Date().toISOString().slice(0, 10),
+            date: dateKey,
+            dateKey,
             mode: (payload.mode ?? "focus") as "focus" | "break",
             durationSec: payload.durationSec ?? 0,
             taskId: payload.taskId ?? null,
@@ -123,7 +137,11 @@ export default function StatsPage() {
     const today = new Date();
     return Math.round(
       sessionsForStats
-        .filter((s) => s.mode === "focus" && isSameDay(new Date(s.date), today))
+        .filter((s) => {
+          if (s.mode !== "focus") return false;
+          const date = getSessionDate(s);
+          return date ? isSameDay(date, today) : false;
+        })
         .reduce((acc, s) => acc + s.durationSec, 0) / 60
     );
   }, [sessionsForStats]);
@@ -135,7 +153,11 @@ export default function StatsPage() {
       const label = format(d, "EEE");
       const min = Math.round(
         sessionsForStats
-          .filter((s) => s.mode === "focus" && isSameDay(new Date(s.date), d))
+          .filter((s) => {
+            if (s.mode !== "focus") return false;
+            const date = getSessionDate(s);
+            return date ? isSameDay(date, d) : false;
+          })
           .reduce((acc, s) => acc + s.durationSec, 0) / 60
       );
       return { label, min };
