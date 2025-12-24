@@ -66,7 +66,12 @@ export default function PendingSyncer() {
 
           if (op.type === "session") {
             const payload = op.payload as any;
-            await writeSession(uid, payload, { opId: op.opId, sessionId: payload.id });
+            const dateKey = payload.dateKey ?? payload.date ?? new Date().toISOString().slice(0, 10);
+            await writeSession(
+              uid,
+              { ...payload, dateKey },
+              { opId: op.opId, sessionId: payload.id }
+            );
           }
 
           if (op.type === "presence") {

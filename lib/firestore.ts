@@ -44,11 +44,11 @@ export async function writeSession(
   payload: any,
   options: { opId?: string; sessionId?: string } = {}
 ) {
-  const dateKey = payload?.dateKey ?? payload?.date ?? new Date().toISOString().slice(0, 10);
+  const { id: _omitId, date: legacyDate, ...rest } = payload ?? {};
+  const dateKey = rest?.dateKey ?? legacyDate ?? new Date().toISOString().slice(0, 10);
   const ref = options.sessionId ? doc(sessionsCollection, options.sessionId) : doc(sessionsCollection);
   await setDoc(ref, {
-    ...payload,
-    date: dateKey,
+    ...rest,
     dateKey,
     user_uid: uid,
     ts: serverTimestamp(),

@@ -79,7 +79,6 @@ export function useTimer(opts: Opts = {}) {
 
           const dateKey = new Date().toISOString().slice(0, 10);
           const payload = {
-            date: dateKey,
             dateKey,
             mode: finalTimer.mode,
             durationSec: sessionDurationSec,
