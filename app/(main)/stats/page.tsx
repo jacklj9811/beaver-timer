@@ -10,8 +10,8 @@ import { removePendingOps } from "@/utils/mergeOffline";
 
 type Session = {
   id: string;
+  dateKey?: string; // 新写入只使用 dateKey；date / ts 仅兼容历史数据
   date?: string;
-  dateKey?: string;
   ts?: any;
   mode: "focus" | "break";
   durationSec: number;
@@ -19,12 +19,14 @@ type Session = {
 };
 type Task = { id: string; name?: string | null };
 
-const getSessionDate = (s: Session) => {
-  if (s.dateKey) return new Date(s.dateKey);
-  if (s.date) return new Date(s.date);
-  if (s.ts?.toDate) return s.ts.toDate();
-  if (typeof s.ts === "number") return new Date(s.ts);
-  if (s.ts?.seconds) return new Date(s.ts.seconds * 1000);
+const getSessionDateKey = (s: Session) => {
+  if (s.dateKey) return s.dateKey;
+  if (s.date) return s.date;
+
+  // 历史数据兜底：如果旧文档缺失 dateKey/date，才从 ts 推导
+  if (s.ts?.toDate) return s.ts.toDate().toISOString().slice(0, 10);
+  if (typeof s.ts === "number") return new Date(s.ts).toISOString().slice(0, 10);
+  if (s.ts?.seconds) return new Date(s.ts.seconds * 1000).toISOString().slice(0, 10);
   return null;
 };
 
@@ -94,7 +96,6 @@ export default function StatsPage() {
           const dateKey = payload.dateKey ?? payload.date ?? new Date().toISOString().slice(0, 10);
           return {
             id: payload.id ?? op.opId,
-            date: dateKey,
             dateKey,
             mode: (payload.mode ?? "focus") as "focus" | "break",
             durationSec: payload.durationSec ?? 0,
@@ -139,8 +140,8 @@ export default function StatsPage() {
       sessionsForStats
         .filter((s) => {
           if (s.mode !== "focus") return false;
-          const date = getSessionDate(s);
-          return date ? isSameDay(date, today) : false;
+          const dateKey = getSessionDateKey(s);
+          return dateKey ? isSameDay(new Date(dateKey), today) : false;
         })
         .reduce((acc, s) => acc + s.durationSec, 0) / 60
     );
@@ -155,8 +156,8 @@ export default function StatsPage() {
         sessionsForStats
           .filter((s) => {
             if (s.mode !== "focus") return false;
-            const date = getSessionDate(s);
-            return date ? isSameDay(date, d) : false;
+            const dateKey = getSessionDateKey(s);
+            return dateKey ? isSameDay(new Date(dateKey), d) : false;
           })
           .reduce((acc, s) => acc + s.durationSec, 0) / 60
       );
