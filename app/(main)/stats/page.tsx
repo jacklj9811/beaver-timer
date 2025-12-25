@@ -1,12 +1,11 @@
 "use client";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { onSnapshot, query, where, orderBy } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { User } from "firebase/auth";
 import { format, startOfWeek, addDays, isSameDay } from "date-fns";
-import { sessionsCollection, tasksCollection } from "@/lib/firestore";
 import { usePendingOps } from "@/hooks/usePendingOps";
 import { removePendingOps } from "@/utils/mergeOffline";
+import { subscribeUserSessions, subscribeUserTasks } from "@/lib/firestoreSubscriptions";
+import { useAuthSubscriptions } from "@/hooks/useAuthSubscriptions";
 
 type Session = {
   id: string;
@@ -35,57 +34,55 @@ export default function StatsPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const pendingOps = usePendingOps();
 
-  useEffect(() => {
-    let unsubSessions: (() => void) | null = null;
-    let unsubTasks: (() => void) | null = null;
-
-    const unsubAuth = onAuthStateChanged(auth, (u) => {
-      unsubSessions?.();
-      unsubTasks?.();
-
-      if (!u) {
-        setSessions([]);
-        setTasks([]);
-        return;
-      }
-
-      const sessionsQuery = query(sessionsCollection, where("user_uid", "==", u.uid), orderBy("ts", "asc"));
-      unsubSessions = onSnapshot(sessionsQuery, { includeMetadataChanges: true }, (snap) => {
-        const confirmedOpIds = snap.docs
-          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
-          .map((docSnap) => (docSnap.data() as any).opId)
-          .filter(Boolean);
-        removePendingOps(confirmedOpIds);
-        setSessions(
-          snap.docs
-            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
-            .map((d) => ({ id: d.id, ...(d.data() as any) }))
-        );
-      });
-
-      const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
-      unsubTasks = onSnapshot(tasksQuery, { includeMetadataChanges: true }, (snap) => {
-        const confirmedOpIds = snap.docs
-          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
-          .flatMap((docSnap) => {
-            const data = docSnap.data() as any;
-            return [data.createdOpId, data.lastOpId].filter(Boolean);
-          });
-        removePendingOps(confirmedOpIds);
-        setTasks(
-          snap.docs
-            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
-            .map((d) => ({ id: d.id, ...(d.data() as any) }))
-        );
-      });
-    });
-
-    return () => {
-      unsubSessions?.();
-      unsubTasks?.();
-      unsubAuth();
-    };
+  const handleUserChange = useCallback((user: User | null) => {
+    if (!user) {
+      setSessions([]);
+      setTasks([]);
+    }
   }, []);
+
+  const subscribeForUser = useCallback(
+    (user: User) => {
+      const sessionsUnsub = subscribeUserSessions(user, {
+        onData: (docs) => {
+          const confirmedOpIds = docs
+            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+            .map((docSnap) => (docSnap.data() as any).opId)
+            .filter(Boolean);
+          removePendingOps(confirmedOpIds);
+          setSessions(
+            docs
+              .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+              .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          );
+        },
+        onError: (error) => console.error(error),
+      });
+
+      const tasksUnsub = subscribeUserTasks(user, {
+        onData: (docs) => {
+          const confirmedOpIds = docs
+            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+            .flatMap((docSnap) => {
+              const data = docSnap.data() as any;
+              return [data.createdOpId, data.lastOpId].filter(Boolean);
+            });
+          removePendingOps(confirmedOpIds);
+          setTasks(
+            docs
+              .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+              .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          );
+        },
+        onError: (error) => console.error(error),
+      });
+
+      return [sessionsUnsub, tasksUnsub];
+    },
+    []
+  );
+
+  useAuthSubscriptions(subscribeForUser, handleUserChange);
 
   const pendingSessions = useMemo(
     () =>

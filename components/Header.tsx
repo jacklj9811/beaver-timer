@@ -1,11 +1,10 @@
 "use client";
 import Link from "next/link";
 import ThemeToggle from "./ThemeToggle";
-import { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { onSnapshot } from "firebase/firestore";
-import { userDoc } from "@/lib/firestore";
+import { useCallback, useState } from "react";
+import type { User } from "firebase/auth";
+import { subscribeUserProfile } from "@/lib/firestoreSubscriptions";
+import { useAuthSubscriptions } from "@/hooks/useAuthSubscriptions";
 
 type UserProfile = {
   nickname?: string | null;
@@ -14,30 +13,28 @@ type UserProfile = {
 export default function Header() {
   const [accountLabel, setAccountLabel] = useState<string>("");
 
-  useEffect(() => {
-    let unsubscribeProfile: (() => void) | null = null;
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      unsubscribeProfile?.();
-      if (!user) {
-        setAccountLabel("");
-        return;
-      }
-
-      const fallback = user.displayName || user.email || user.uid;
-      setAccountLabel(fallback);
-
-      unsubscribeProfile = onSnapshot(userDoc(user.uid), (snap) => {
-        const data = snap.data() as UserProfile | undefined;
-        const nickname = data?.nickname?.trim();
-        setAccountLabel(nickname || fallback);
-      });
-    });
-
-    return () => {
-      unsubscribeProfile?.();
-      unsubscribeAuth();
-    };
+  const handleUserChange = useCallback((user: User | null) => {
+    if (!user) {
+      setAccountLabel("");
+      return;
+    }
+    const fallback = user.displayName || user.email || user.uid;
+    setAccountLabel(fallback);
   }, []);
+
+  const subscribeForUser = useCallback((user: User) => {
+    const fallback = user.displayName || user.email || user.uid;
+    const unsubProfile = subscribeUserProfile(user, {
+      onData: (data) => {
+        const nickname = (data as UserProfile | undefined)?.nickname?.trim();
+        setAccountLabel(nickname || fallback);
+      },
+      onError: (error) => console.error(error),
+    });
+    return [unsubProfile];
+  }, []);
+
+  useAuthSubscriptions(subscribeForUser, handleUserChange);
 
   return (
     <header className="border-b border-slate-200/50 dark:border-slate-800/70">
