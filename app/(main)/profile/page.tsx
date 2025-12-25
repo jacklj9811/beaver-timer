@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
-import { auth } from "@/lib/firebase";
+import { useCallback, useState } from "react";
+import type { User } from "firebase/auth";
+import { serverTimestamp, setDoc } from "firebase/firestore";
 import { userDoc } from "@/lib/firestore";
+import { subscribeUserProfile } from "@/lib/firestoreSubscriptions";
+import { useAuthSubscriptions } from "@/hooks/useAuthSubscriptions";
 
 type ProfileData = {
   nickname?: string | null;
@@ -18,27 +19,25 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    let unsubscribeProfile: (() => void) | null = null;
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      unsubscribeProfile?.();
-      setUid(user?.uid ?? null);
-      setEmail(user?.email ?? "");
-      setMessage(null);
-
-      if (!user) return;
-
-      unsubscribeProfile = onSnapshot(userDoc(user.uid), (snap) => {
-        const data = snap.data() as ProfileData | undefined;
-        setNickname(data?.nickname ?? "");
-      });
-    });
-
-    return () => {
-      unsubscribeProfile?.();
-      unsubscribeAuth();
-    };
+  const handleUserChange = useCallback((user: User | null) => {
+    setUid(user?.uid ?? null);
+    setEmail(user?.email ?? "");
+    setMessage(null);
+    if (!user) setNickname("");
   }, []);
+
+  const subscribeForUser = useCallback((user: User) => {
+    const unsubProfile = subscribeUserProfile(user, {
+      onData: (data) => {
+        const profile = data as ProfileData | undefined;
+        setNickname(profile?.nickname ?? "");
+      },
+      onError: (error) => console.error(error),
+    });
+    return [unsubProfile];
+  }, []);
+
+  useAuthSubscriptions(subscribeForUser, handleUserChange);
 
   const handleSave = async () => {
     if (!uid) return;

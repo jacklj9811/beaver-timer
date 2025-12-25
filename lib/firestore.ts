@@ -69,7 +69,19 @@ export function listenTodaySessions(uid: string, onData: (docs: any[]) => void) 
     where("ts", "<", end),
     orderBy("ts", "asc")
   );
-  return onSnapshot(q, (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+  let unsubscribe: (() => void) | null = null;
+  const handleError = (error: any) => {
+    if (error?.code === "permission-denied") {
+      console.error(`[firestore-permission-denied] scope=sessions uid=${uid} query=today`, error.message);
+      unsubscribe?.();
+    }
+  };
+  unsubscribe = onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    handleError
+  );
+  return unsubscribe;
 }
 
 export async function updatePresence(uid: string, state: any, opId?: string) {
@@ -84,7 +96,20 @@ export function listenPresence(
   uid: string,
   onChange: (s: any, metadata: SnapshotMetadata) => void
 ) {
-  return onSnapshot(presenceDoc(uid), { includeMetadataChanges: true }, (snap) => {
-    if (snap.exists()) onChange(snap.data(), snap.metadata);
-  });
+  let unsubscribe: (() => void) | null = null;
+  const handleError = (error: any) => {
+    if (error?.code === "permission-denied") {
+      console.error(`[firestore-permission-denied] scope=presence uid=${uid}`, error.message);
+      unsubscribe?.();
+    }
+  };
+  unsubscribe = onSnapshot(
+    presenceDoc(uid),
+    { includeMetadataChanges: true },
+    (snap) => {
+      if (snap.exists()) onChange(snap.data(), snap.metadata);
+    },
+    handleError
+  );
+  return unsubscribe;
 }

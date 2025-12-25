@@ -1,10 +1,8 @@
 ﻿"use client";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, useCallback } from "react";
+import type { User } from "firebase/auth";
 import {
   collection,
-  onSnapshot,
   addDoc,
   updateDoc,
   doc,
@@ -20,6 +18,8 @@ import { useStore, Task, Tag } from "@/store/useStore";
 import { addPendingOp, removePendingOps } from "@/utils/mergeOffline";
 import { usePendingOps } from "@/hooks/usePendingOps";
 import { tasksCollection, updatePresence, userDoc } from "@/lib/firestore";
+import { subscribeUserTags, subscribeUserTasks } from "@/lib/firestoreSubscriptions";
+import { useAuthSubscriptions } from "@/hooks/useAuthSubscriptions";
 import { Plus, Tag as TagIcon, X, ChevronDown, ChevronUp } from "lucide-react";
 import TagManager from "./TagManager";
 
@@ -58,11 +58,8 @@ export default function TaskList() {
   const closeMenuTimeout = useRef<number | null>(null);
   const pendingOps = usePendingOps();
 
-  useEffect(() => {
-    let unsubTasks: (() => void) | null = null;
-    let unsubTags: (() => void) | null = null;
-
-    const unsubAuth = onAuthStateChanged(auth, (u) => {
+  const handleUserChange = useCallback(
+    (u: User | null) => {
       setUid(u?.uid ?? null);
       setTasks([]);
       setArchivedTasks([]);
@@ -71,59 +68,63 @@ export default function TaskList() {
       setTags([]);
       setTagsReady(false);
       setTasksReady(false);
+    },
+    [setArchivedTasks, setServerArchivedTasks, setServerTasks, setTags, setTasks]
+  );
 
-      unsubTasks?.();
-      unsubTags?.();
-      if (!u) return;
-
+  const subscribeForUser = useCallback(
+    (u: User) => {
       void setDoc(
         userDoc(u.uid),
         { user_uid: u.uid, email: u.email ?? null, updatedAt: serverTimestamp(), createdAt: serverTimestamp() },
         { merge: true }
       );
 
-      const tasksQuery = query(tasksCollection, where("user_uid", "==", u.uid));
-      const tagsCol = TAG_COLLECTION(u.uid);
+      const tasksUnsub = subscribeUserTasks(u, {
+        onData: (docs) => {
+          const confirmedOpIds = docs
+            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+            .flatMap((docSnap) => {
+              const data = docSnap.data() as any;
+              return [data.createdOpId, data.lastOpId].filter(Boolean);
+            });
+          removePendingOps(confirmedOpIds);
 
-      unsubTasks = onSnapshot(tasksQuery, { includeMetadataChanges: true }, (snap) => {
-        const confirmedOpIds = snap.docs
-          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
-          .flatMap((docSnap) => {
-            const data = docSnap.data() as any;
-            return [data.createdOpId, data.lastOpId].filter(Boolean);
-          });
-        removePendingOps(confirmedOpIds);
-
-        const list = snap.docs
-          .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
-          .map((d) => {
-            const data = d.data() as any;
-            return {
-              id: d.id,
-              name: data.name ?? "",
-              tagIds: data.tagIds ?? data.tags ?? [],
-              priority: data.priority ?? "medium",
-              done: data.done ?? false,
-              archived: data.archived ?? false,
-            } satisfies Task;
-          });
-        setRawTasks(list);
-        setTasksReady(true);
+          const list = docs
+            .filter((docSnap) => !docSnap.metadata.hasPendingWrites)
+            .map((d) => {
+              const data = d.data() as any;
+              return {
+                id: d.id,
+                name: data.name ?? "",
+                tagIds: data.tagIds ?? data.tags ?? [],
+                priority: data.priority ?? "medium",
+                done: data.done ?? false,
+                archived: data.archived ?? false,
+              } satisfies Task;
+            });
+          setRawTasks(list);
+          setTasksReady(true);
+        },
+        onError: (error) => console.error(error),
       });
 
-      unsubTags = onSnapshot(tagsCol, (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Tag[];
-        setTags(list);
-        setTagsReady(true);
+      const tagsUnsub = subscribeUserTags(u, {
+        tagsCollectionFactory: (uid) => TAG_COLLECTION(uid),
+        onData: (docs) => {
+          const list = docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Tag[];
+          setTags(list);
+          setTagsReady(true);
+        },
+        onError: (error) => console.error(error),
       });
-    });
 
-    return () => {
-      unsubTasks?.();
-      unsubTags?.();
-      unsubAuth();
-    };
-  }, [setArchivedTasks, setTags, setTasks]);
+      return [tasksUnsub, tagsUnsub];
+    },
+    [setTags]
+  );
+
+  useAuthSubscriptions(subscribeForUser, handleUserChange);
 
   useEffect(() => {
     if (!uid || !tagsReady || !tasksReady) return;
@@ -176,17 +177,18 @@ export default function TaskList() {
         if (task.archived) archived.push(normalizedTask);
         else active.push(normalizedTask);
 
-        if (needsUpdate) {
-          const opId = addPendingOp({
-            type: "task",
-            payload: { action: "update", id: task.id, data: { tagIds: dedupedTagIds } },
-          });
-          await updateDoc(doc(db, "tasks", task.id), {
-            tagIds: dedupedTagIds,
-            updatedAt: serverTimestamp(),
-            lastOpId: opId,
-          });
-        }
+    if (needsUpdate) {
+      const opId = addPendingOp({
+        type: "task",
+        payload: { action: "update", id: task.id, data: { tagIds: dedupedTagIds } },
+      });
+      await updateDoc(doc(db, "tasks", task.id), {
+        tagIds: dedupedTagIds,
+        updatedAt: serverTimestamp(),
+        user_uid: uid,
+        lastOpId: opId,
+      });
+    }
       }
 
       setServerTasks(active);
@@ -288,16 +290,17 @@ export default function TaskList() {
     if (historical) {
       const reuse = window.confirm(`检测到你曾创建过任务“${name}”，是否继承历史统计数据？`);
       if (reuse) {
-        const opId = addPendingOp({
-          type: "task",
-          payload: { action: "update", id: historical.id, data: { archived: false, done: false } },
-        });
-        await updateDoc(doc(db, "tasks", historical.id), {
-          archived: false,
-          done: false,
-          updatedAt: serverTimestamp(),
-          lastOpId: opId,
-        });
+      const opId = addPendingOp({
+        type: "task",
+        payload: { action: "update", id: historical.id, data: { archived: false, done: false } },
+      });
+      await updateDoc(doc(db, "tasks", historical.id), {
+        archived: false,
+        done: false,
+        updatedAt: serverTimestamp(),
+        user_uid: uid,
+        lastOpId: opId,
+      });
         setInput("");
         return;
       }
@@ -384,7 +387,12 @@ export default function TaskList() {
       type: "task",
       payload: { action: "update", id, data: { done: !done } },
     });
-    updateDoc(doc(db, "tasks", id), { done: !done, updatedAt: serverTimestamp(), lastOpId: opId }).catch(
+    updateDoc(doc(db, "tasks", id), {
+      done: !done,
+      updatedAt: serverTimestamp(),
+      user_uid: uid,
+      lastOpId: opId,
+    }).catch(
       () => {}
     );
   };
@@ -400,6 +408,7 @@ export default function TaskList() {
     await updateDoc(doc(db, "tasks", task.id), {
       archived: true,
       archivedAt: serverTimestamp(),
+      user_uid: uid,
       lastOpId: opId,
     });
   };
@@ -421,7 +430,7 @@ export default function TaskList() {
       type: "task",
       payload: { action: "update", id: task.id, data: { name } },
     });
-    await updateDoc(doc(db, "tasks", task.id), { name, updatedAt: serverTimestamp(), lastOpId: opId });
+    await updateDoc(doc(db, "tasks", task.id), { name, updatedAt: serverTimestamp(), user_uid: uid, lastOpId: opId });
     setEditingId(null);
     setEditingName("");
   };
@@ -436,6 +445,7 @@ export default function TaskList() {
     await updateDoc(doc(db, "tasks", task.id), {
       tagIds: next,
       updatedAt: serverTimestamp(),
+      user_uid: uid,
       lastOpId: opId,
     });
   };
@@ -459,6 +469,7 @@ export default function TaskList() {
     await updateDoc(doc(db, "tasks", task.id), {
       tagIds: next,
       updatedAt: serverTimestamp(),
+      user_uid: uid,
       lastOpId: opId,
     });
     setTagInputs((prev) => ({ ...prev, [task.id]: "" }));
