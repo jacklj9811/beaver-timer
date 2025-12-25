@@ -98,7 +98,6 @@ export default function TaskList() {
                 id: d.id,
                 name: data.name ?? "",
                 tagIds: data.tagIds ?? data.tags ?? [],
-                priority: data.priority ?? "medium",
                 done: data.done ?? false,
                 archived: data.archived ?? false,
               } satisfies Task;
@@ -223,7 +222,6 @@ export default function TaskList() {
           id,
           name: payload.name ?? existing?.name ?? "",
           tagIds: payload.tagIds ?? existing?.tagIds ?? [],
-          priority: payload.priority ?? existing?.priority ?? "medium",
           done: payload.done ?? existing?.done ?? false,
           archived: payload.archived ?? existing?.archived ?? false,
         };
@@ -236,11 +234,10 @@ export default function TaskList() {
           id,
           name: payload.name ?? "",
           tagIds: payload.tagIds ?? [],
-          priority: payload.priority ?? "medium",
           done: payload.done ?? false,
           archived: payload.archived ?? false,
         };
-        const updates = payload.data ?? {};
+        const { priority: _legacyPriority, ...updates } = payload.data ?? {};
         taskById.set(id, { ...existing, ...updates });
       }
     });
@@ -320,22 +317,20 @@ export default function TaskList() {
 
         const opId = addPendingOp({
           type: "task",
-          payload: {
-            action: "update",
-            id: historical.id,
-            data: {
-              name,
-              tagIds: [],
-              priority: "medium",
-              done: false,
-              archived: false,
+            payload: {
+              action: "update",
+              id: historical.id,
+              data: {
+                name,
+                tagIds: [],
+                done: false,
+                archived: false,
+              },
             },
-          },
-        });
+          });
         batch.set(doc(db, "tasks", historical.id), {
           name,
           tagIds: [],
-          priority: "medium" as const,
           done: false,
           archived: false,
           user_uid: uid,
@@ -356,7 +351,6 @@ export default function TaskList() {
     const payload = {
       name,
       tagIds: [],
-      priority: "medium" as const,
       done: false,
       archived: false,
     };
@@ -620,8 +614,6 @@ export default function TaskList() {
                 </button>
               </div>
             </div>
-
-            <div className="text-xs opacity-70">优先级：{t.priority}</div>
           </div>
           <div
             className="relative flex items-center justify-end w-[152px] shrink-0"
