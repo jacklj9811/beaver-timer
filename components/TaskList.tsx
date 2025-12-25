@@ -510,7 +510,7 @@ export default function TaskList() {
     const isConfirmingAny = hoveredAction?.id === t.id;
     const isSyncPending = pendingTaskIds.has(t.id);
     const completeLabel = isPending ? "完成" : "恢复";
-    const confirmLabel = isPending ? "已完成？" : "恢复？";
+    const confirmLabel = isPending ? "完成？" : "恢复？";
     const clearCloseTimer = () => {
       if (closeMenuTimeout.current) {
         window.clearTimeout(closeMenuTimeout.current);
