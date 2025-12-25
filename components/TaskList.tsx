@@ -525,6 +525,12 @@ export default function TaskList() {
       }, 160);
     };
 
+    const closeActionMenu = () => {
+      clearCloseTimer();
+      setActionMenuId((current) => (current === t.id ? null : current));
+      setHoveredAction((current) => (current?.id === t.id ? null : current));
+    };
+
     return (
       <li
         key={t.id}
@@ -647,6 +653,7 @@ export default function TaskList() {
                   onFocus={() => setHoveredAction({ id: t.id, action: "complete" })}
                   onClick={() => {
                     if (!isConfirmingComplete) return;
+                    closeActionMenu();
                     if (isPending) {
                       handleConfirmComplete(t);
                     } else {
@@ -665,6 +672,7 @@ export default function TaskList() {
                   onFocus={() => setHoveredAction({ id: t.id, action: "delete" })}
                   onClick={() => {
                     if (!isConfirmingDelete) return;
+                    closeActionMenu();
                     void archiveTask(t);
                   }}
                 >
