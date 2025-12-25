@@ -1,6 +1,10 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -12,16 +16,14 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID!
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const existingApp = getApps().length ? getApp() : undefined;
+const app = existingApp ?? initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-export const db = getFirestore(app);
-
-// 启用 Firestore 离线缓存（IndexedDB）
-enableIndexedDbPersistence(db).catch(() => {
-  // safari / 隐私模式等可能失败，忽略即可
-});
+export const db = existingApp
+  ? getFirestore(app)
+  : initializeFirestore(app, { localCache: persistentLocalCache() });
 
 export default app;
