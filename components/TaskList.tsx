@@ -237,8 +237,9 @@ export default function TaskList() {
           done: payload.done ?? false,
           archived: payload.archived ?? false,
         };
-        const { priority: _legacyPriority, ...updates } = payload.data ?? {};
-        taskById.set(id, { ...existing, ...updates });
+        const data = (payload.data ?? {}) as Record<string, unknown>;
+        const { priority: _legacyPriority, ...updates } = data;
+        taskById.set(id, { ...existing, ...(updates as Partial<Task>) });
       }
     });
 

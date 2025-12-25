@@ -49,11 +49,12 @@ export default function PendingSyncer() {
             }
 
             if (payload.action === "update") {
-              const { priority: _legacyPriority, ...updates } = payload.data ?? {};
+              const data = (payload.data ?? {}) as Record<string, unknown>;
+              const { priority: _legacyPriority, ...updates } = data;
               await setDoc(
                 doc(tasksCollection, id),
                 {
-                  ...updates,
+                  ...(updates as Partial<Record<string, unknown>>),
                   user_uid: uid,
                   updatedAt: serverTimestamp(),
                   lastOpId: op.opId,
