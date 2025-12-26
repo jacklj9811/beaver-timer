@@ -550,15 +550,17 @@ export default function TaskList() {
     return (
       <li
         key={t.id}
-        className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
-          isLeaving ? "max-h-0 opacity-0 translate-x-10" : "max-h-[240px] opacity-100 translate-x-0"
+        className={`transition-[max-height,opacity,transform] duration-300 ease-out ${
+          isLeaving
+            ? "max-h-0 overflow-hidden opacity-0 translate-x-10"
+            : "max-h-[240px] opacity-100 translate-x-0"
         }`}
       >
         <div
           onClick={(event) => handleTaskClick(t.id, event)}
           className={`flex min-w-0 flex-1 cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3 shadow-sm transition-transform duration-300 dark:border-slate-800/80 dark:bg-slate-900/50 ${
             isActive
-              ? "border-indigo-400/80 bg-indigo-50/80 ring-2 ring-indigo-200/70 dark:border-indigo-300/70 dark:bg-indigo-500/10 dark:ring-indigo-400/30"
+              ? "border-indigo-400/80 bg-indigo-50/80 ring-2 ring-indigo-200/70 ring-offset-2 ring-offset-white shadow-[0_0_12px_rgba(99,102,241,0.35)] dark:border-indigo-300/70 dark:bg-indigo-500/10 dark:ring-indigo-400/30 dark:ring-offset-slate-900"
               : ""
           }`}
         >
