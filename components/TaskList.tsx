@@ -531,6 +531,22 @@ export default function TaskList() {
       setHoveredAction((current) => (current?.id === t.id ? null : current));
     };
 
+    const confirmCompleteOrRestore = () => {
+      if (!isConfirmingComplete) return;
+      closeActionMenu();
+      if (isPending) {
+        handleConfirmComplete(t);
+      } else {
+        void toggleDone(t.id, true);
+      }
+    };
+
+    const confirmDelete = () => {
+      if (!isConfirmingDelete) return;
+      closeActionMenu();
+      void archiveTask(t);
+    };
+
     return (
       <li
         key={t.id}
@@ -651,15 +667,7 @@ export default function TaskList() {
                   } ${isConfirmingAny && !isConfirmingComplete ? "opacity-50" : ""}`}
                   onMouseEnter={() => setHoveredAction({ id: t.id, action: "complete" })}
                   onFocus={() => setHoveredAction({ id: t.id, action: "complete" })}
-                  onClick={() => {
-                    if (!isConfirmingComplete) return;
-                    closeActionMenu();
-                    if (isPending) {
-                      handleConfirmComplete(t);
-                    } else {
-                      void toggleDone(t.id, true);
-                    }
-                  }}
+                  onClick={confirmCompleteOrRestore}
                 >
                   {isConfirmingComplete ? confirmLabel : completeLabel}
                 </button>
@@ -670,11 +678,7 @@ export default function TaskList() {
                   } ${isConfirmingAny && !isConfirmingDelete ? "opacity-50" : ""}`}
                   onMouseEnter={() => setHoveredAction({ id: t.id, action: "delete" })}
                   onFocus={() => setHoveredAction({ id: t.id, action: "delete" })}
-                  onClick={() => {
-                    if (!isConfirmingDelete) return;
-                    closeActionMenu();
-                    void archiveTask(t);
-                  }}
+                  onClick={confirmDelete}
                 >
                   {isConfirmingDelete ? "删除？" : "删除"}
                 </button>
